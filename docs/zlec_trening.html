@@ -171,14 +171,6 @@ div.innerHTML = `
     </select>
   </div>
 
-  <div class="form-group">
-    <label>Trening według:</label>
-    <select class="tryb-wykonania" required>
-      <option value="czas">Czasu</option>
-      <option value="dystans">Dystansu</option>
-    </select>
-  </div>
-
   <div class="parametry"></div>
 `;
 
@@ -204,6 +196,20 @@ function onTypChange(e) {
   if (!idTypu) return;
 
   const ps = parametry[idTypu] || [];
+
+  // jeśli TEMPO → dodaj wybór trybu wykonywania
+if (idTypu == 2) {
+  paramsDiv.innerHTML += `
+    <div class="form-group">
+      <label>Trening według:</label>
+      <select class="tryb-wykonania" required>
+        <option value="czas">Czasu</option>
+        <option value="dystans">Dystansu</option>
+      </select>
+    </div>
+  `;
+}
+
 
   /* generowanie inputów z poprawnymi typami i placeholderami */
   ps.forEach(p => {
@@ -310,9 +316,7 @@ document.getElementById('trening-form').addEventListener('submit', submitForm);
 async function submitForm(e) {
   e.preventDefault();
     const ok = await validateBeforeInsert();
-  if (!ok) return; // ❌ PRZERWIJ – NIC NIE ZAPISUJEMY
-
-
+  if (!ok) return; 
   const zawodnikId = document.getElementById('zawodnik').value;
   const dataTr = document.getElementById('data_treningu').value;
   const ile = parseInt(document.getElementById('ile_etapow').value);
@@ -324,7 +328,11 @@ async function submitForm(e) {
   }
 
   /* ---------------- INSERT treningdowykonania ---------------- */
-const tryb = div.querySelector('.tryb-wykonania').value;
+// Odczyt trybu jeśli TEMPO, inaczej null
+let tryb = null;
+if (idTypu == 2) {
+  tryb = div.querySelector('.tryb-wykonania')?.value || null;
+}
 
 const { data: eData, error: eErr } = await supabase
   .from('etapdowykonania')
@@ -332,10 +340,11 @@ const { data: eData, error: eErr } = await supabase
     id_treningudw: treningId,
     id_typutreningu: idTypu,
     kolejnosc_etapu: etapNr,
-    tryb_wykonania: tryb   
+    tryb_wykonania: tryb
   }])
   .select()
   .single();
+
 
 
   if (tErr) {
@@ -441,4 +450,5 @@ const { data: eData, error: eErr } = await supabase
 </script>
 </body>
 </html>
+
 
