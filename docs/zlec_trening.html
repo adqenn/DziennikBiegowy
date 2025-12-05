@@ -328,12 +328,13 @@ async function submitForm(e) {
   }
 
   /* ---------------- INSERT treningdowykonania ---------------- */
-// Odczyt trybu jeśli TEMPO, inaczej null
+// Odczyt trybu (tylko dla TEMPO = id 2)
 let tryb = null;
 if (idTypu == 2) {
   tryb = div.querySelector('.tryb-wykonania')?.value || null;
 }
 
+// zapis etapu
 const { data: eData, error: eErr } = await supabase
   .from('etapdowykonania')
   .insert([{
@@ -344,6 +345,7 @@ const { data: eData, error: eErr } = await supabase
   }])
   .select()
   .single();
+
 
 
 
@@ -450,5 +452,6 @@ const { data: eData, error: eErr } = await supabase
 </script>
 </body>
 </html>
+
 
 
