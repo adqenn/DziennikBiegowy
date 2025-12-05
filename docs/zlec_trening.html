@@ -160,17 +160,28 @@ function generateEtapy() {
     div.className = 'etap';
     div.dataset.etap = i;
 
-    div.innerHTML = `
-      <h3>Etap ${i}</h3>
-      <div class="form-group">
-        <label>Typ treningu:</label>
-        <select class="typtr" required>
-          <option value="">-- wybierz typ --</option>
-          ${typy.map(tt => `<option value="${tt.id_typutreningu}">${tt.nazwa}</option>`).join('')}
-        </select>
-      </div>
-      <div class="parametry"></div>
-    `;
+div.innerHTML = `
+  <h3>Etap ${i}</h3>
+
+  <div class="form-group">
+    <label>Typ treningu:</label>
+    <select class="typtr" required>
+      <option value="">-- wybierz typ --</option>
+      ${typy.map(tt => `<option value="${tt.id_typutreningu}">${tt.nazwa}</option>`).join('')}
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label>Trening według:</label>
+    <select class="tryb-wykonania" required>
+      <option value="czas">Czasu</option>
+      <option value="dystans">Dystansu</option>
+    </select>
+  </div>
+
+  <div class="parametry"></div>
+`;
+
 
     container.appendChild(div);
 
@@ -313,17 +324,19 @@ async function submitForm(e) {
   }
 
   /* ---------------- INSERT treningdowykonania ---------------- */
-  const { data: tData, error: tErr } = await supabase
-    .from('treningdowykonania')
-    .insert([{
-      data_treningudw: dataTr,
-      ileetapów_treningudw: ile,
-      id_zawodnika: zawodnikId,
-      id_trenera: window.trenerId,
-      uwagi_treningudw: uwagi
-    }])
-    .select()
-    .single();
+const tryb = div.querySelector('.tryb-wykonania').value;
+
+const { data: eData, error: eErr } = await supabase
+  .from('etapdowykonania')
+  .insert([{
+    id_treningudw: treningId,
+    id_typutreningu: idTypu,
+    kolejnosc_etapu: etapNr,
+    tryb_wykonania: tryb   
+  }])
+  .select()
+  .single();
+
 
   if (tErr) {
     alert('Błąd tworzenia treningu: ' + tErr.message);
@@ -428,3 +441,4 @@ async function submitForm(e) {
 </script>
 </body>
 </html>
+
