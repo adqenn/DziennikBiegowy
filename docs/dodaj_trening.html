@@ -140,7 +140,7 @@ async function onTreningSelect(treningId) {
 
   const { data: etapy, error: errE } = await supabase
     .from('etapdowykonania')
-    .select('id_etapudw, id_typutreningu, kolejnosc_etapu')
+    .select('id_etapudw, id_typutreningu, kolejnosc_etapu, tryb_wykonania')
     .eq('id_treningudw', treningId)
     .order('kolejnosc_etapu', { ascending: true });
 
@@ -179,8 +179,10 @@ async function renderEtapForm(etap, numer, container) {
   div.className = 'etap';
   div.innerHTML = `<h3>Etap ${etap.kolejnosc_etapu} — ${typ?.nazwa}</h3>`;
 
-  /* ----- TEMPO ----- */
+  
+/* ----- TEMPO (z trybem wykonywania) ----- */
 if (nazwa === 'tempo') {
+
   const { data: plan, error: errP } = await supabase
     .from('vw_etap_tempo_plan')
     .select('ilosc_powtorzen, czas, czas_przerwy, dystans, dystans_przerwy')
@@ -188,44 +190,70 @@ if (nazwa === 'tempo') {
     .single();
 
   if (errP || !plan) {
-    console.error("Plan tempo fetch error:", errP);
     div.innerHTML += `<p><em>Błąd ładowania planu tempo.</em></p>`;
     container.appendChild(div);
     return;
   }
 
   const ile = parseInt(plan.ilosc_powtorzen || 1);
+  const tryb = etap.tryb_wykonania;   // 🔥 NOWE!
 
-  // 🔵 opis planu od trenera
+  // opis planu jak dotychczas
   div.innerHTML += `
-    <p style="opacity: 0.7;"><strong>Czas planowy odcinka:</strong> ${plan.czas}</p>
-    <p style="opacity: 0.7;"><strong>Czas przerwy:</strong> ${plan.czas_przerwy}</p>
-    <p style="opacity: 0.7;"><strong>Dystans:</strong> ${plan.dystans} km</p>
-    <p style="opacity: 0.7;"><strong>Dystans przerwy:</strong> ${plan.dystans_przerwy ?? '-'} km</p>
-    <p style="opacity: 0.7;"><strong>Ilość powtórzeń:</strong> ${ile}</p>
-    <hr />
+    <p style="opacity:0.7;"><strong>Czas odcinka:</strong> ${plan.czas}</p>
+    <p style="opacity:0.7;"><strong>Czas przerwy:</strong> ${plan.czas_przerwy}</p>
+    <p style="opacity:0.7;"><strong>Dystans:</strong> ${plan.dystans} km</p>
+    <p style="opacity:0.7;"><strong>Dystans przerwy:</strong> ${plan.dystans_przerwy} km</p>
+    <p style="opacity:0.7;"><strong>Ilość powtórzeń:</strong> ${ile}</p>
+
+    <p style="margin-top:10px;">
+      <strong>Trening według:</strong>
+      ${tryb === 'czas' ? '⏱ czasu' : '📏 dystansu'}
+    </p>
+    <hr/>
   `;
 
+  // 🔥 generowanie odpowiednich pól zależnie od trybu
   for (let i = 1; i <= ile; i++) {
-    const powt = document.createElement('div');
-    powt.className = 'powtorka';
-    powt.innerHTML = `
-      <h4>Powtórzenie ${i}</h4>
-      <div>
+    const block = document.createElement('div');
+    block.className = "powtorka";
+
+    if (tryb === 'czas') {
+      // ----------------------------------------------------
+      // TRYB „CZAS” → zawodnik wpisuje CZAS, CZAS PRZERWY
+      // ----------------------------------------------------
+      block.innerHTML = `
+        <h4>Powtórzenie ${i}</h4>
+
         <label>Czas ${i} (mm:ss):</label>
         <input type="text" name="czas-${etap.id_etapudw}-${i}" placeholder="np. 1:10" required />
-      </div>
-      <div>
+
         <label>Czas przerwy ${i} (mm:ss):</label>
         <input type="text" name="przerwa-${etap.id_etapudw}-${i}" placeholder="np. 1:00" required />
-      </div>
-    `;
-    div.appendChild(powt);
+      `;
+    }
+
+    else if (tryb === 'dystans') {
+      // ----------------------------------------------------
+      // TRYB „DYSTANS” → zawodnik wpisuje DYSTANSY
+      // ----------------------------------------------------
+      block.innerHTML = `
+        <h4>Powtórzenie ${i}</h4>
+
+        <label>Dystans ${i} (km):</label>
+        <input type="number" step="0.01" name="dyst-${etap.id_etapudw}-${i}" placeholder="np. 0.40" required />
+
+        <label>Dystans przerwy ${i} (km):</label>
+        <input type="number" step="0.01" name="dystp-${etap.id_etapudw}-${i}" placeholder="np. 0.20" required />
+      `;
+    }
+
+    div.appendChild(block);
   }
 }
 
 
-  /* ----- WYBIEGANIE ----- */
+
 /* ----- WYBIEGANIE ----- */
 else if (nazwa === 'wybieganie') {
   // 🔵 plan z widoku vw_etap_wybieganie_plan
@@ -302,35 +330,39 @@ async function validateAllInputs() {
         errors.push(`Etap ${etap.kolejnosc_etapu}: tętno musi być liczbą całkowitą`);
       }
     } else if (typN === 'tempo') {
-      const { data: planTempo, error: errP } = await supabase
-        .from('vw_etap_tempo_plan')
-        .select('ilosc_powtorzen')
-        .eq('id_etapudw', etap.id_etapudw)
-        .single();
+  const { data: planTempo } = await supabase
+    .from('vw_etap_tempo_plan')
+    .select('ilosc_powtorzen')
+    .eq('id_etapudw', etap.id_etapudw)
+    .single();
 
-      if (errP || !planTempo) {
-        errors.push(`Etap ${etap.kolejnosc_etapu}: błąd odczytu planu tempo.`);
-        continue;
-      }
+  const ilosc = planTempo?.ilosc_powtorzen || 1;
+  const tryb = etap.tryb_wykonania;
 
-      const ilosc = planTempo.ilosc_powtorzen || 1;
+  for (let i = 1; i <= ilosc; i++) {
 
-      for (let i = 1; i <= ilosc; i++) {
-        const czas = document
-          .querySelector(`[name="czas-${etap.id_etapudw}-${i}"]`)
-          ?.value.trim() || '';
-        const przerwa = document
-          .querySelector(`[name="przerwa-${etap.id_etapudw}-${i}"]`)
-          ?.value.trim() || '';
+    if (tryb === 'czas') {
+      const czas = document.querySelector(`[name="czas-${etap.id_etapudw}-${i}"]`)?.value.trim();
+      const przerwa = document.querySelector(`[name="przerwa-${etap.id_etapudw}-${i}"]`)?.value.trim();
 
-        if (!validateTime(czas)) {
-          errors.push(`Etap ${etap.kolejnosc_etapu}: czas powtórzenia ${i} musi być w formacie mm:ss`);
-        }
-        if (!validateTime(przerwa)) {
-          errors.push(`Etap ${etap.kolejnosc_etapu}: czas przerwy ${i} musi być w formacie mm:ss`);
-        }
-      }
+      if (!validateTime(czas))
+        errors.push(`Etap ${etap.kolejnosc_etapu}: czas ${i} ma zły format.`);
+      if (!validateTime(przerwa))
+        errors.push(`Etap ${etap.kolejnosc_etapu}: przerwa ${i} ma zły format.`);
     }
+
+    if (tryb === 'dystans') {
+      const dyst = document.querySelector(`[name="dyst-${etap.id_etapudw}-${i}"]`)?.value.trim();
+      const dystp = document.querySelector(`[name="dystp-${etap.id_etapudw}-${i}"]`)?.value.trim();
+
+      if (!validateFloat(dyst))
+        errors.push(`Etap ${etap.kolejnosc_etapu}: dystans ${i} jest niepoprawny.`);
+      if (!validateFloat(dystp))
+        errors.push(`Etap ${etap.kolejnosc_etapu}: dystans przerwy ${i} jest niepoprawny.`);
+    }
+  }
+}
+
   }
 
   if (errors.length > 0) {
@@ -459,68 +491,58 @@ async function submitTrening() {
     }
 
     /* ------------ TEMPO ------------ */
-    else if (typN === "tempo") {
-      const { data: planTempo, error: errP } = await supabase
-        .from('vw_etap_tempo_plan')
-        .select('ilosc_powtorzen, dystans, dystans_przerwy')
-        .eq('id_etapudw', etap.id_etapudw)
+else if (typN === "tempo") {
+
+  const { data: planTempo } = await supabase
+    .from('vw_etap_tempo_plan')
+    .select('ilosc_powtorzen, czas, czas_przerwy, dystans, dystans_przerwy')
+    .eq('id_etapudw', etap.id_etapudw)
+    .single();
+
+  const tryb = etap.tryb_wykonania;
+  const ilosc = planTempo?.ilosc_powtorzen || 1;
+
+  for (let i = 1; i <= ilosc; i++) {
+
+    let wartosci = [];
+
+    if (tryb === 'czas') {
+      wartosci = [
+        { nazwa: "czas", wartosc: document.querySelector(`[name="czas-${etap.id_etapudw}-${i}"]`).value.trim() },
+        { nazwa: "czasprzerwy", wartosc: document.querySelector(`[name="przerwa-${etap.id_etapudw}-${i}"]`).value.trim() },
+        { nazwa: "dystans", wartosc: planTempo.dystans },
+        { nazwa: "dystansprzerwy", wartosc: planTempo.dystans_przerwy }
+      ];
+    }
+
+    if (tryb === 'dystans') {
+      wartosci = [
+        { nazwa: "dystans", wartosc: document.querySelector(`[name="dyst-${etap.id_etapudw}-${i}"]`).value.trim() },
+        { nazwa: "dystansprzerwy", wartosc: document.querySelector(`[name="dystp-${etap.id_etapudw}-${i}"]`).value.trim() },
+        { nazwa: "czas", wartosc: planTempo.czas },
+        { nazwa: "czasprzerwy", wartosc: planTempo.czas_przerwy }
+      ];
+    }
+
+    wartosci.push({ nazwa: "ilosc_powtorzen", wartosc: i.toString() });
+
+    for (let z of wartosci) {
+      const { data: par } = await supabase
+        .from('parametrytyputreningu')
+        .select('id_parametrówtt')
+        .eq('nazwaparametru', z.nazwa)
+        .eq('id_typutreningu', etap.id_typutreningu)
         .single();
 
-      if (errP || !planTempo) {
-        alert("Błąd odczytu planu tempo.");
-        console.error(errP);
-        return;
-      }
-
-      const ilosc = planTempo.ilosc_powtorzen || 1;
-      const dystans = planTempo.dystans;
-      const dystansPrzerwy = planTempo.dystans_przerwy;
-
-      for (let i = 1; i <= ilosc; i++) {
-        const czas = document
-          .querySelector(`[name="czas-${etap.id_etapudw}-${i}"]`)
-          ?.value.trim();
-        const przerwa = document
-          .querySelector(`[name="przerwa-${etap.id_etapudw}-${i}"]`)
-          ?.value.trim();
-
-        // dodatkowa kontrola bezpieczeństwa
-        if (!validateTime(czas) || !validateTime(przerwa)) {
-          alert(`Wykryto nieprawidłowy czas w etapie ${etap.kolejnosc_etapu}, powtórzenie ${i}.`);
-          return;
-        }
-
-        const wartosci = [
-          { nazwa: "czas", wartosc: czas },
-          { nazwa: "czasprzerwy", wartosc: przerwa },
-          { nazwa: "dystans", wartosc: dystans },
-          { nazwa: "dystansprzerwy", wartosc: dystansPrzerwy },
-          { nazwa: "ilosc_powtorzen", wartosc: i.toString() }
-        ];
-
-        for (let z of wartosci) {
-          if (z.wartosc == null) continue;
-
-          const { data: par, error: errPar } = await supabase
-            .from('parametrytyputreningu')
-            .select('id_parametrówtt')
-            .eq('nazwaparametru', z.nazwa)
-            .eq('id_typutreningu', etap.id_typutreningu)
-            .single();
-
-          if (errPar || !par) {
-            console.error("Brak parametru:", z.nazwa, errPar);
-            continue;
-          }
-
-          await supabase.from('parametryetapuwykonanego').insert({
-            id_etapuw: idEtapuW,
-            id_parametrówtt: par.id_parametrówtt,
-            wartosc_parametru: z.wartosc
-          });
-        }
-      }
+      await supabase.from('parametryetapuwykonanego').insert({
+        id_etapuw: idEtapuW,
+        id_parametrówtt: par.id_parametrówtt,
+        wartosc_parametru: z.wartosc
+      });
     }
+  }
+}
+
   }
 
   alert("Trening zapisany pomyślnie!");
@@ -530,3 +552,4 @@ async function submitTrening() {
 
 </body>
 </html>
+
