@@ -1,0 +1,91 @@
+<!-- dashboard.html -->
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Panel główny</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <div class="container">
+    <h2 id="welcome">Witaj!</h2>
+
+    <div id="options" style="margin-top: 1em;"></div>
+
+    <button onclick="logout()" style="margin-top: 2em;">Wyloguj</button>
+  </div>
+
+<script type="module">
+import { supabase } from './supabase.js';
+
+const welcomeH2 = document.getElementById('welcome');
+const optionsDiv = document.getElementById('options');
+
+async function fetchUserRoles() {
+
+  // Używamy getSession – NIE getUser() !!!
+  const { data: { session }, error: sesErr } = await supabase.auth.getSession();
+
+  if (sesErr || !session) {
+    window.location.href = "login.html";
+    return;
+  }
+
+  const user = session.user;
+
+  // TERAZ dopiero zapytania do RLS
+  const { data: trener } = await supabase
+      .from('trener')
+      .select('id_trenera, imię')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+  const { data: zawodnik } = await supabase
+      .from('zawodnik')
+      .select('id_zawodnika, imię')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+  const imie = trener?.imię || zawodnik?.imię || "użytkowniku";
+  welcomeH2.textContent = `Witaj ${imie}!`;
+
+  if (trener) {
+    createButton('Zleć trening do wykonania', 'zlec_trening.html');
+    createButton('Podgląd treningów', 'podglad_treningow.html');
+  }
+
+  if (zawodnik) {
+    createButton('Dodaj wykonany trening', 'dodaj_trening.html');
+    createButton('Zobacz treningi do wykonania', 'treningi_do_wykonania.html');
+  }
+
+  createButton('Statystyki', 'statystyki.html');
+}
+
+
+  // Tworzenie przycisków
+  function createButton(text, link) {
+    const btn = document.createElement('button');
+    btn.textContent = text;
+    btn.style.marginTop = '10px';
+    btn.onclick = () => window.location.href = link;
+    optionsDiv.appendChild(btn);
+  }
+
+  // Wylogowanie
+  async function logout() {
+    await supabase.auth.signOut();
+    window.location.href = "login.html";
+  }
+
+  // Publikacja funkcji logout dla onclick w HTML
+  window.logout = logout;
+
+  // Start
+  fetchUserRoles();
+</script>
+
+</body>
+</html>

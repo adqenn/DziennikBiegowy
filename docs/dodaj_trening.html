@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dodaj wykonany trening</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .container { max-width: 700px; margin: auto; padding: 1em; }
+    .trening-item { border: 1px solid #444; padding: 10px; margin: 5px 0; border-radius: 5px; }
+    .trening-item button { margin-top: 5px; }
+    .etap { border: 1px solid #ccc; padding: 1em; margin: 1em 0; border-radius: 4px; }
+    .powtorka { border: 1px dashed #888; padding: 0.7em; margin-bottom: 0.5em; border-radius: 3px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Dodaj wykonany trening</h2>
+
+    <div id="lista-treningow"></div>
+
+    <div id="formularz-wykonania" class="hidden">
+      <div id="etapy-container"></div>
+      <div>
+        <label for="komentarz">Komentarz (opcjonalnie):</label><br/>
+        <textarea id="komentarz" rows="3" style="width:100%;"></textarea>
+      </div>
+      <button id="submit-btn">Zatwierdź wykonanie</button>
+    </div>
+  </div>
+
+<script type="module">
+import { supabase } from './supabase.js';
+
+/* ===================== WALIDACJE FORMATÓW ===================== */
+
+function validateTime(str) {
+  return /^\d{1,2}:\d{2}$/.test(str);     // mm:ss
+}
+function validateFloat(str) {
+  return /^\d+(\.\d+)?$/.test(str);       // X.Y
+}
+function validateInt(str) {
+  return /^\d+$/.test(str);               // liczba całkowita
+}
+
+/* ===================== STAN ===================== */
+
+let dostępneTreningi = [];
+let currentEtapy = [];
+let currentTreningId = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadZleconeTreningi();
+});
+
+/* ===================== ŁADOWANIE ZLECONYCH TRENINGÓW ===================== */
+
+async function loadZleconeTreningi() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    alert("Nie jesteś zalogowany.");
+    return;
+  }
+
+  const { data: zawodnik, error: errZ } = await supabase
+    .from('zawodnik')
+    .select('id_zawodnika')
+    .eq('user_id', user.id)
+    .single();
+
+  if (errZ || !zawodnik) {
+    alert("Nie znaleziono profilu zawodnika.");
+    return;
+  }
+
+  const { data: treningi, error: errT } = await supabase
+    .from('treningdowykonania')
+    .select('id_treningudw, data_treningudw, ileetapów_treningudw')
+    .eq('id_zawodnika', zawodnik.id_zawodnika)
+    .order('data_treningudw', { ascending: false })
+    .limit(10);
+
+  if (errT) {
+    alert("Błąd ładowania zleconych treningów: " + errT.message);
+    return;
+  }
+  if (!treningi || treningi.length === 0) {
+    alert("Brak zleconych treningów do dodania.");
+    return;
+  }
+
+  dostępneTreningi = treningi;
+  renderListaTreningow(treningi);
+}
+
+function renderListaTreningow(treningi) {
+  const div = document.getElementById('lista-treningow');
+  div.innerHTML = '';
+
+  const dzis = new Date();
+  dzis.setHours(0, 0, 0, 0);
+
+  const przyszle = treningi.filter(t => {
+    const d = new Date(t.data_treningudw);
+    d.setHours(0, 0, 0, 0);
+    return d >= dzis;
+  });
+
+  const posortowane = przyszle.sort(
+    (a, b) => new Date(a.data_treningudw) - new Date(b.data_treningudw)
+  );
+
+  const ograniczone = posortowane.slice(0, 3);
+
+  ograniczone.forEach(t => {
+    const item = document.createElement('div');
+    item.className = 'trening-item';
+    item.innerHTML = `
+      <strong>Data:</strong> ${new Date(t.data_treningudw).toLocaleDateString('pl-PL')}<br/>
+      <strong>Etapy:</strong> ${t.ileetapów_treningudw}<br/>
+      <button data-id="${t.id_treningudw}">Wybierz ten trening</button>
+    `;
+    div.appendChild(item);
+
+    item.querySelector('button').addEventListener('click', () => {
+      onTreningSelect(t.id_treningudw);
+    });
+  });
+}
+
+/* ===================== WYBÓR TRENINGU ===================== */
+
+async function onTreningSelect(treningId) {
+  currentTreningId = treningId;
+
+  document.getElementById('lista-treningow').classList.add('hidden');
+  document.getElementById('formularz-wykonania').classList.remove('hidden');
+
+  const { data: etapy, error: errE } = await supabase
+    .from('etapdowykonania')
+    .select('id_etapudw, id_typutreningu, kolejnosc_etapu')
+    .eq('id_treningudw', treningId)
+    .order('kolejnosc_etapu', { ascending: true });
+
+  if (errE) {
+    alert("Błąd ładowania etapów: " + errE.message);
+    return;
+  }
+  if (!etapy || etapy.length === 0) {
+    alert("Wybrany trening nie ma etapów.");
+    return;
+  }
+
+  currentEtapy = etapy;
+  const container = document.getElementById('etapy-container');
+  container.innerHTML = '';
+
+  for (let i = 0; i < etapy.length; i++) {
+    await renderEtapForm(etapy[i], i + 1, container);
+  }
+
+  document.getElementById('submit-btn').onclick = submitTrening;
+}
+
+/* ===================== RENDER FORMULARZA DLA ETAPU ===================== */
+
+async function renderEtapForm(etap, numer, container) {
+  const { data: typ } = await supabase
+    .from('typtreningu')
+    .select('nazwa')
+    .eq('id_typutreningu', etap.id_typutreningu)
+    .single();
+
+  const nazwa = typ?.nazwa?.toLowerCase() || '—';
+
+  const div = document.createElement('div');
+  div.className = 'etap';
+  div.innerHTML = `<h3>Etap ${etap.kolejnosc_etapu} — ${typ?.nazwa}</h3>`;
+
+  /* ----- TEMPO ----- */
+if (nazwa === 'tempo') {
+  const { data: plan, error: errP } = await supabase
+    .from('vw_etap_tempo_plan')
+    .select('ilosc_powtorzen, czas, czas_przerwy, dystans, dystans_przerwy')
+    .eq('id_etapudw', etap.id_etapudw)
+    .single();
+
+  if (errP || !plan) {
+    console.error("Plan tempo fetch error:", errP);
+    div.innerHTML += `<p><em>Błąd ładowania planu tempo.</em></p>`;
+    container.appendChild(div);
+    return;
+  }
+
+  const ile = parseInt(plan.ilosc_powtorzen || 1);
+
+  // 🔵 opis planu od trenera
+  div.innerHTML += `
+    <p style="opacity: 0.7;"><strong>Czas planowy odcinka:</strong> ${plan.czas}</p>
+    <p style="opacity: 0.7;"><strong>Czas przerwy:</strong> ${plan.czas_przerwy}</p>
+    <p style="opacity: 0.7;"><strong>Dystans:</strong> ${plan.dystans} km</p>
+    <p style="opacity: 0.7;"><strong>Dystans przerwy:</strong> ${plan.dystans_przerwy ?? '-'} km</p>
+    <p style="opacity: 0.7;"><strong>Ilość powtórzeń:</strong> ${ile}</p>
+    <hr />
+  `;
+
+  for (let i = 1; i <= ile; i++) {
+    const powt = document.createElement('div');
+    powt.className = 'powtorka';
+    powt.innerHTML = `
+      <h4>Powtórzenie ${i}</h4>
+      <div>
+        <label>Czas ${i} (mm:ss):</label>
+        <input type="text" name="czas-${etap.id_etapudw}-${i}" placeholder="np. 1:10" required />
+      </div>
+      <div>
+        <label>Czas przerwy ${i} (mm:ss):</label>
+        <input type="text" name="przerwa-${etap.id_etapudw}-${i}" placeholder="np. 1:00" required />
+      </div>
+    `;
+    div.appendChild(powt);
+  }
+}
+
+
+  /* ----- WYBIEGANIE ----- */
+/* ----- WYBIEGANIE ----- */
+else if (nazwa === 'wybieganie') {
+  // 🔵 plan z widoku vw_etap_wybieganie_plan
+  const { data: planW, error: errW } = await supabase
+    .from('vw_etap_wybieganie_plan')
+    .select('tempo, dystans, tetno')
+    .eq('id_etapudw', etap.id_etapudw)
+    .single();
+
+  if (!errW && planW) {
+    div.innerHTML += `
+      <p style="opacity: 0.7;"><strong>Tempo planowe:</strong> ${planW.tempo}</p>
+      <p style="opacity: 0.7;"><strong>Dystans:</strong> ${planW.dystans} km</p>
+      <p style="opacity: 0.7;"><strong>Tętno:</strong> ${planW.tetno}</p>
+      <hr />
+    `;
+  }
+
+  div.innerHTML += `
+    <div class="form-group">
+      <label>Tempo (mm:ss):</label>
+      <input type="text" name="tempo-${etap.id_etapudw}" placeholder="np. 5:30" required />
+    </div>
+
+    <div class="form-group">
+      <label>Dystans (km):</label>
+      <input type="number" step="0.01" name="dystans-${etap.id_etapudw}" placeholder="np. 8.50" required />
+    </div>
+
+    <div class="form-group">
+      <label>Tętno (bpm):</label>
+      <input type="number" name="tetno-${etap.id_etapudw}" placeholder="np. 140" required />
+    </div>
+  `;
+}
+ else {
+    div.innerHTML += `<p><em>Typ "${nazwa}" nie jest jeszcze obsługiwany.</em></p>`;
+  }
+
+  container.appendChild(div);
+}
+
+/* ===================== WALIDACJA CAŁEGO TRENINGU (PRZED ZAPISEM) ===================== */
+
+async function validateAllInputs() {
+  const errors = [];
+
+  for (let etap of currentEtapy) {
+    const { data: typ, error: errT } = await supabase
+      .from('typtreningu')
+      .select('nazwa')
+      .eq('id_typutreningu', etap.id_typutreningu)
+      .single();
+
+    if (errT || !typ) {
+      errors.push(`Etap ${etap.kolejnosc_etapu}: błąd odczytu typu treningu.`);
+      continue;
+    }
+
+    const typN = typ.nazwa?.toLowerCase();
+
+    if (typN === 'wybieganie') {
+      const tempo = document.querySelector(`[name="tempo-${etap.id_etapudw}"]`)?.value.trim() || '';
+      const dystans = document.querySelector(`[name="dystans-${etap.id_etapudw}"]`)?.value.trim() || '';
+      const tetno = document.querySelector(`[name="tetno-${etap.id_etapudw}"]`)?.value.trim() || '';
+
+      if (!validateTime(tempo)) {
+        errors.push(`Etap ${etap.kolejnosc_etapu}: tempo musi być w formacie mm:ss`);
+      }
+      if (!validateFloat(dystans)) {
+        errors.push(`Etap ${etap.kolejnosc_etapu}: dystans musi być liczbą z kropką`);
+      }
+      if (!validateInt(tetno)) {
+        errors.push(`Etap ${etap.kolejnosc_etapu}: tętno musi być liczbą całkowitą`);
+      }
+    } else if (typN === 'tempo') {
+      const { data: planTempo, error: errP } = await supabase
+        .from('vw_etap_tempo_plan')
+        .select('ilosc_powtorzen')
+        .eq('id_etapudw', etap.id_etapudw)
+        .single();
+
+      if (errP || !planTempo) {
+        errors.push(`Etap ${etap.kolejnosc_etapu}: błąd odczytu planu tempo.`);
+        continue;
+      }
+
+      const ilosc = planTempo.ilosc_powtorzen || 1;
+
+      for (let i = 1; i <= ilosc; i++) {
+        const czas = document
+          .querySelector(`[name="czas-${etap.id_etapudw}-${i}"]`)
+          ?.value.trim() || '';
+        const przerwa = document
+          .querySelector(`[name="przerwa-${etap.id_etapudw}-${i}"]`)
+          ?.value.trim() || '';
+
+        if (!validateTime(czas)) {
+          errors.push(`Etap ${etap.kolejnosc_etapu}: czas powtórzenia ${i} musi być w formacie mm:ss`);
+        }
+        if (!validateTime(przerwa)) {
+          errors.push(`Etap ${etap.kolejnosc_etapu}: czas przerwy ${i} musi być w formacie mm:ss`);
+        }
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    alert("Nie zapisano treningu. Popraw następujące błędy:\n\n" + errors.join("\n"));
+    return false;
+  }
+
+  return true;
+}
+
+/* ===================== ZAPIS WYKONANIA TRENINGU ===================== */
+
+async function submitTrening() {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    alert("Błąd: użytkownik nie jest zalogowany.");
+    return;
+  }
+
+  // 1) Walidacja CAŁEGO formularza PRZED pierwszym INSERT-em
+  const ok = await validateAllInputs();
+  if (!ok) {
+    return; // NIC nie zapisujemy
+  }
+
+  // 2) Dopiero teraz – odczyt zawodnika i zapisy
+  const { data: zawodnik, error: errZ } = await supabase
+    .from('zawodnik')
+    .select('id_zawodnika, id_trenera')
+    .eq('user_id', user.id)
+    .single();
+
+  if (errZ || !zawodnik) {
+    alert("Błąd: nie znaleziono profilu zawodnika.");
+    return;
+  }
+
+  const { data: treningW, error: errTW } = await supabase
+    .from('treningwykonany')
+    .insert({
+      id_treningudw: currentTreningId,         // 🔴 POPRAWIONE: kolumna w bazie
+      id_zawodnika: zawodnik.id_zawodnika,
+      data_treninguw: new Date().toISOString(),
+      uwagi: document.getElementById('komentarz').value || null,
+      id_trenera: zawodnik.id_trenera,
+      ileetapów_treninguw: currentEtapy.length
+    })
+    .select()
+    .single();
+
+  if (errTW) {
+    if (errTW.code === '23505') {
+      alert("Ten trening został już przez Ciebie wykonany.");
+    } else {
+      alert("Błąd zapisu treningu wykonanego: " + errTW.message);
+    }
+    return;
+  }
+
+  const idTreningW = treningW.id_treningwykonany;
+
+  /* ----- iteracja po etapach ----- */
+  for (let etap of currentEtapy) {
+    const { data: etapW, error: errEW } = await supabase
+      .from('etapwykonany')
+      .insert({
+        id_treninguw: idTreningW,
+        id_typutreningu: etap.id_typutreningu,
+        kolejnosc_etapu: etap.kolejnosc_etapu
+      })
+      .select()
+      .single();
+
+    if (errEW) {
+      alert("Błąd zapisu etapu: " + errEW.message);
+      return;
+    }
+
+    const idEtapuW = etapW.id_etapuw;
+
+    const { data: typ } = await supabase
+      .from('typtreningu')
+      .select('nazwa')
+      .eq('id_typutreningu', etap.id_typutreningu)
+      .single();
+
+    const typN = typ?.nazwa?.toLowerCase();
+
+    /* ------------ WYBIEGANIE ------------ */
+    if (typN === "wybieganie") {
+      const tempo = document.querySelector(`[name="tempo-${etap.id_etapudw}"]`)?.value.trim();
+      const dystans = document.querySelector(`[name="dystans-${etap.id_etapudw}"]`)?.value.trim();
+      const tetno = document.querySelector(`[name="tetno-${etap.id_etapudw}"]`)?.value.trim();
+
+      // dodatkowa kontrola (nie powinna już wyjść po pre-walidacji)
+      if (!validateTime(tempo) || !validateFloat(dystans) || !validateInt(tetno)) {
+        alert(`Wykryto nieprawidłowe dane w etapie ${etap.kolejnosc_etapu}. Trening nie został zapisany w całości.`);
+        return;
+      }
+
+      const parametry = [
+        { nazwa: 'tempo', wartosc: tempo },
+        { nazwa: 'dystans', wartosc: dystans },
+        { nazwa: 'tętno', wartosc: tetno }
+      ];
+
+      for (let p of parametry) {
+        const { data: par, error: errPar } = await supabase
+          .from('parametrytyputreningu')
+          .select('id_parametrówtt')
+          .eq('nazwaparametru', p.nazwa)
+          .eq('id_typutreningu', etap.id_typutreningu)
+          .single();
+
+        if (errPar || !par) {
+          console.error("Brak parametru:", p.nazwa, errPar);
+          continue;
+        }
+
+        await supabase.from('parametryetapuwykonanego').insert({
+          id_etapuw: idEtapuW,
+          id_parametrówtt: par.id_parametrówtt,
+          wartosc_parametru: p.wartosc
+        });
+      }
+    }
+
+    /* ------------ TEMPO ------------ */
+    else if (typN === "tempo") {
+      const { data: planTempo, error: errP } = await supabase
+        .from('vw_etap_tempo_plan')
+        .select('ilosc_powtorzen, dystans, dystans_przerwy')
+        .eq('id_etapudw', etap.id_etapudw)
+        .single();
+
+      if (errP || !planTempo) {
+        alert("Błąd odczytu planu tempo.");
+        console.error(errP);
+        return;
+      }
+
+      const ilosc = planTempo.ilosc_powtorzen || 1;
+      const dystans = planTempo.dystans;
+      const dystansPrzerwy = planTempo.dystans_przerwy;
+
+      for (let i = 1; i <= ilosc; i++) {
+        const czas = document
+          .querySelector(`[name="czas-${etap.id_etapudw}-${i}"]`)
+          ?.value.trim();
+        const przerwa = document
+          .querySelector(`[name="przerwa-${etap.id_etapudw}-${i}"]`)
+          ?.value.trim();
+
+        // dodatkowa kontrola bezpieczeństwa
+        if (!validateTime(czas) || !validateTime(przerwa)) {
+          alert(`Wykryto nieprawidłowy czas w etapie ${etap.kolejnosc_etapu}, powtórzenie ${i}.`);
+          return;
+        }
+
+        const wartosci = [
+          { nazwa: "czas", wartosc: czas },
+          { nazwa: "czasprzerwy", wartosc: przerwa },
+          { nazwa: "dystans", wartosc: dystans },
+          { nazwa: "dystansprzerwy", wartosc: dystansPrzerwy },
+          { nazwa: "ilosc_powtorzen", wartosc: i.toString() }
+        ];
+
+        for (let z of wartosci) {
+          if (z.wartosc == null) continue;
+
+          const { data: par, error: errPar } = await supabase
+            .from('parametrytyputreningu')
+            .select('id_parametrówtt')
+            .eq('nazwaparametru', z.nazwa)
+            .eq('id_typutreningu', etap.id_typutreningu)
+            .single();
+
+          if (errPar || !par) {
+            console.error("Brak parametru:", z.nazwa, errPar);
+            continue;
+          }
+
+          await supabase.from('parametryetapuwykonanego').insert({
+            id_etapuw: idEtapuW,
+            id_parametrówtt: par.id_parametrówtt,
+            wartosc_parametru: z.wartosc
+          });
+        }
+      }
+    }
+  }
+
+  alert("Trening zapisany pomyślnie!");
+  location.reload();
+}
+</script>
+
+</body>
+</html>
