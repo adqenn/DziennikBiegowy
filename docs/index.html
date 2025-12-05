@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trening App</title>
+    <link rel="stylesheet" href="style.css">
+
+    <!-- Minimalny styl, żeby strona wyglądała schludnie -->
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            height: 100vh;
+            margin: 0;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            text-align: center;
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        h1 {
+            margin-bottom: 20px;
+        }
+        a.button {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 14px 28px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 18px;
+        }
+        a.button:hover {
+            background: #0066d6;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+    <h1>Witaj w aplikacji treningowej!</h1>
+    <p>Przekierowuję… Jeśli nic się nie dzieje, kliknij poniżej.</p>
+
+    <a href="login.html" class="button">Przejdź do logowania</a>
+</div>
+
+<!-- Ładujemy Supabase -->
+<script type="module">
+    import "./supabase.js";
+
+    // Automatyczne przekierowanie
+    import { supabase } from "./supabase.js";
+
+    async function checkSession() {
+        const { data, error } = await supabase.auth.getSession();
+
+        if (data?.session) {
+            // zalogowany → do dashboardu
+            window.location.href = "dashboard.html";
+        } else {
+            // nie zalogowany → login
+            // pozwalamy użytkownikowi zostać lub kliknąć
+        }
+    }
+
+    checkSession();
+</script>
+
+</body>
+</html>
