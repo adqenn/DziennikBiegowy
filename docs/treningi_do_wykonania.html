@@ -195,9 +195,9 @@ async function wypelnijWybieganie(id_etap, div) {
   }
 
   div.innerHTML += `
-    <p><strong>Dystans:</strong> ${row.dystans} km</p>
-    <p><strong>Docelowe tempo:</strong> ${row.tempo}</p>
-    <p><strong>Tętno:</strong> ${row.tetno} bpm</p>
+    <p><strong>Dystans [km]:</strong> ${row.dystans} </p>
+    <p><strong>Docelowe tempo [min/km]:</strong> ${row.tempo}</p>
+    <p><strong>Tętno [bpm]:</strong> ${row.tetno} bpm</p>
   `;
 }
 
@@ -216,12 +216,15 @@ async function wypelnijTempo(id_etap, div) {
 
   div.innerHTML += `
     <p><strong>Liczba powtórzeń:</strong> ${row.ilosc_powtorzen}</p>
-    <p><strong>Odcinek:</strong> ${row.dystans} km</p>
-    <p><strong>Przerwa:</strong> ${row.dystans_przerwy} km</p>
+    <p><strong>Dystans [km]:</strong> ${row.dystans} </p>
+    <p><strong>Dystans przerwy [km]:</strong> ${row.dystans_przerwy} </p>
+    <p><strong>Czas [mm:ss]:</strong> ${row.czas} </p>
+    <p><strong>Czas przerwy [mm:ss]:</strong> ${row.czas_przerwy} </p>
   `;
 }
 </script>
 
 </body>
 </html>
+
 
