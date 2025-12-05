@@ -201,7 +201,7 @@ function onTypChange(e) {
 if (idTypu == 2) {
   paramsDiv.innerHTML += `
     <div class="form-group">
-      <label>Trening według:</label>
+      <label>Trening według (co ma uzupełniać zawodnik):</label>
       <select class="tryb-wykonania" required>
         <option value="czas">Czasu</option>
         <option value="dystans">Dystansu</option>
@@ -217,15 +217,15 @@ if (idTypu == 2) {
     let placeholder = "";
     let inputType = "text";
 
-    if (name === 'tempo' || name === 'czas' || name === 'czasprzerwy') {
+    if (name === 'tempo' || name === 'Czas' || name === 'Czas przerwy') {
       placeholder = "mm:ss";
       inputType = "text";
     }
-    else if (name === 'dystans' || name === 'dystansprzerwy') {
+    else if (name === 'Dystans' || name === 'Dystans przerwy') {
       placeholder = "np. 6.20";
       inputType = "number";
     }
-    else if (name === 'tętno' || name === 'ilosc_powtorzen') {
+    else if (name === 'tętno' || name === 'Ilość powtórzeń') {
       placeholder = "np. 140";
       inputType = "number";
     }
@@ -452,6 +452,7 @@ const { data: eData, error: eErr } = await supabase
 </script>
 </body>
 </html>
+
 
 
 
