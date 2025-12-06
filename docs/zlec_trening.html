@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zleć trening</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .form-group { margin-bottom: 1em; }
+    label { display: block; margin-bottom: 0.3em; }
+    input, select, textarea { padding: 0.5em; width: 100%; box-sizing: border-box; }
+    .etap {
+      border: 1px solid #ccc;
+      padding: 1em;
+      margin-bottom: 1em;
+      border-radius: 4px;
+    }
+    .etap h3 { margin-top: 0; }
+    button { padding: 0.7em 1.2em; margin-right: 0.5em; margin-top: 1em; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Zleć trening</h2>
+    <form id="trening-form">
+      <div class="form-group">
+        <label for="zawodnik">Wybierz zawodnika:</label>
+        <select id="zawodnik" required></select>
+      </div>
+      <div class="form-group">
+        <label for="data_treningu">Data treningu:</label>
+        <input type="date" id="data_treningu" required />
+      </div>
+      <div class="form-group">
+        <label for="ile_etapow">Ile etapów:</label>
+        <input type="number" id="ile_etapow" min="1" value="1" required />
+      </div>
+      <div class="form-group">
+        <label for="uwagi">Uwagi do treningu (opcjonalnie):</label>
+        <textarea id="uwagi" placeholder="np. zalecenia, uwagi, itp."></textarea>
+      </div>
+
+      <div id="etapy-container"></div>
+
+      <button type="button" id="generuj-etapy">Generuj etapy</button>
+      <button type="submit">Zatwierdź i zleć trening</button>
+    </form>
+  </div>
+
+ <script type="module">
+import { supabase } from './supabase.js';
+
+/* =====================================================================
+   STANDARD FORMATÓW PARAMETRÓW
+   ===================================================================== */
+
+/* czas (tempo, czas, czasprzerwy): mm:ss */
+function validateTime(str) {
+  return /^\d{1,2}:\d{2}$/.test(str);
+}
+
+/* dystans: X.Y */
+function validateFloat(str) {
+  return /^\d+(\.\d+)?$/.test(str);
+}
+
+/* liczba całkowita */
+function validateInt(str) {
+  return /^\d+$/.test(str);
+}
+
+
+
+/* =====================================================================
+   LOGIKA STRONY
+   ===================================================================== */
+
+let typy = [];
+let parametry = {};
+
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadZawodnicy();
+  await loadTypyIParametry();
+});
+
+
+
+/* ---------------------- ŁADOWANIE ZAWODNIKÓW ---------------------- */
+
+async function loadZawodnicy() {
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: trener } = await supabase
+    .from('trener')
+    .select('id_trenera')
+    .eq('user_id', user.id)
+    .single();
+
+  if (!trener) {
+    alert('Nie znaleziono Twojego konta trenera – nie możesz zlecać treningów.');
+    return;
+  }
+
+  window.trenerId = trener.id_trenera;
+
+  const { data: zawodnicy } = await supabase
+    .from('zawodnik')
+    .select('id_zawodnika, imię')
+    .eq('id_trenera', trener.id_trenera);
+
+  const sel = document.getElementById('zawodnik');
+  zawodnicy?.forEach(z => {
+    const opt = document.createElement('option');
+    opt.value = z.id_zawodnika;
+    opt.textContent = z.imię;
+    sel.appendChild(opt);
+  });
+}
+
+
+
+/* ---------------------- ŁADOWANIE TYPÓW I PARAMETRÓW ---------------------- */
+
+async function loadTypyIParametry() {
+  const { data: t } = await supabase
+    .from('typtreningu')
+    .select('id_typutreningu, nazwa');
+
+  typy = t;
+
+  for (const tt of typy) {
+    const { data: p } = await supabase
+      .from('parametrytyputreningu')
+      .select('id_parametrówtt, nazwaparametru')
+      .eq('id_typutreningu', tt.id_typutreningu);
+
+    parametry[tt.id_typutreningu] = p;
+  }
+}
+
+
+
+/* ---------------------- GENEROWANIE ETAPÓW ---------------------- */
+
+document.getElementById('generuj-etapy').addEventListener('click', generateEtapy);
+
+function generateEtapy() {
+  const n = parseInt(document.getElementById('ile_etapow').value);
+  if (isNaN(n) || n < 1) {
+    alert('Ilość etapów musi być co najmniej 1');
+    return;
+  }
+
+  const container = document.getElementById('etapy-container');
+  container.innerHTML = '';
+
+  for (let i = 1; i <= n; i++) {
+    const div = document.createElement('div');
+    div.className = 'etap';
+    div.dataset.etap = i;
+
+    div.innerHTML = `
+      <h3>Etap ${i}</h3>
+      <div class="form-group">
+        <label>Typ treningu:</label>
+        <select class="typtr" required>
+          <option value="">-- wybierz typ --</option>
+          ${typy.map(tt => `<option value="${tt.id_typutreningu}">${tt.nazwa}</option>`).join('')}
+        </select>
+      </div>
+      <div class="parametry"></div>
+    `;
+
+    container.appendChild(div);
+
+    div.querySelector('.typtr').addEventListener('change', onTypChange);
+  }
+}
+
+
+
+/* ---------------------- GENEROWANIE PARAMETRÓW POD TYP ---------------------- */
+
+function onTypChange(e) {
+  const select = e.target;
+  const etapDiv = select.closest('.etap');
+  const idTypu = select.value;
+  const paramsDiv = etapDiv.querySelector('.parametry');
+
+  paramsDiv.innerHTML = '';
+
+  if (!idTypu) return;
+
+  const ps = parametry[idTypu] || [];
+
+  /* generowanie inputów z poprawnymi typami i placeholderami */
+  ps.forEach(p => {
+    const name = p.nazwaparametru;
+    let placeholder = "";
+    let inputType = "text";
+
+    if (name === 'tempo' || name === 'czas' || name === 'czasprzerwy') {
+      placeholder = "mm:ss";
+      inputType = "text";
+    }
+    else if (name === 'dystans' || name === 'dystansprzerwy') {
+      placeholder = "np. 6.20";
+      inputType = "number";
+    }
+    else if (name === 'tętno' || name === 'ilosc_powtorzen') {
+      placeholder = "np. 140";
+      inputType = "number";
+    }
+
+    const fm = document.createElement('div');
+    fm.className = 'form-group';
+
+    fm.innerHTML = `
+      <label>${name}:</label>
+      <input 
+        type="${inputType}" 
+        step="${inputType === 'number' ? '0.01' : ''}"
+        name="param-${etapDiv.dataset.etap}-${p.id_parametrówtt}"
+        placeholder="${placeholder}"
+        required
+      />
+    `;
+
+    paramsDiv.appendChild(fm);
+  });
+}
+/*---------------------WALIDACJA--------------------------------------*/
+async function validateBeforeInsert() {
+  const errors = [];
+  const etapDivs = document.querySelectorAll('.etap');
+
+  if (etapDivs.length === 0) {
+    errors.push("Musisz wygenerować przynajmniej jeden etap.");
+  }
+
+  for (const div of etapDivs) {
+    const etapNr = div.dataset.etap;
+    const idTypu = div.querySelector('.typtr').value;
+
+    if (!idTypu) {
+      errors.push(`Etap ${etapNr}: nie wybrano typu treningu.`);
+      continue;
+    }
+
+    const inputs = div.querySelectorAll('input[name]');
+    for (const inp of inputs) {
+      const val = inp.value.trim();
+      const parts = inp.name.split("-");
+      const idParam = parts[2];
+
+      const paramObj = parametry[idTypu].find(p => p.id_parametrówtt == idParam);
+      const name = paramObj?.nazwaparametru;
+
+      if (!name) continue;
+
+      // -------------------- CZAS --------------------
+      if (["tempo", "czas", "czasprzerwy"].includes(name)) {
+        if (!validateTime(val)) {
+          errors.push(`Etap ${etapNr}: parametr "${name}" musi być w formacie mm:ss`);
+        }
+      }
+
+      // -------------------- DYSTANS --------------------
+      if (["dystans", "dystansprzerwy"].includes(name)) {
+        if (!validateFloat(val)) {
+          errors.push(`Etap ${etapNr}: parametr "${name}" musi być liczbą (np. 6.20)`);
+        }
+      }
+
+      // -------------------- LICZBY CAŁKOWITE --------------------
+      if (["tętno", "ilosc_powtorzen"].includes(name)) {
+        if (!validateInt(val)) {
+          errors.push(`Etap ${etapNr}: parametr "${name}" musi być liczbą całkowitą`);
+        }
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    alert("Nie zapisano treningu. Popraw następujące błędy:\n\n" + errors.join("\n"));
+    return false;
+  }
+
+  return true;
+}
+
+
+
+/* ---------------------- ZAPIS PLANU TRENINGOWEGO ---------------------- */
+
+document.getElementById('trening-form').addEventListener('submit', submitForm);
+
+async function submitForm(e) {
+  e.preventDefault();
+    const ok = await validateBeforeInsert();
+  if (!ok) return; // ❌ PRZERWIJ – NIC NIE ZAPISUJEMY
+
+
+  const zawodnikId = document.getElementById('zawodnik').value;
+  const dataTr = document.getElementById('data_treningu').value;
+  const ile = parseInt(document.getElementById('ile_etapow').value);
+  const uwagi = document.getElementById('uwagi').value || null;
+
+  if (!zawodnikId || !dataTr || isNaN(ile) || ile < 1) {
+    alert('Wypełnij poprawnie dane podstawowe.');
+    return;
+  }
+
+  /* ---------------- INSERT treningdowykonania ---------------- */
+  const { data: tData, error: tErr } = await supabase
+    .from('treningdowykonania')
+    .insert([{
+      data_treningudw: dataTr,
+      ileetapów_treningudw: ile,
+      id_zawodnika: zawodnikId,
+      id_trenera: window.trenerId,
+      uwagi_treningudw: uwagi
+    }])
+    .select()
+    .single();
+
+  if (tErr) {
+    alert('Błąd tworzenia treningu: ' + tErr.message);
+    return;
+  }
+
+  const treningId = tData.id_treningudw;
+
+
+  /* ---------------- ZAPIS ETAPÓW ---------------- */
+
+  const etapDivs = document.querySelectorAll('.etap');
+
+  for (const div of etapDivs) {
+    const etapNr = parseInt(div.dataset.etap);
+    const idTypu = div.querySelector('.typtr').value;
+
+    if (!idTypu) {
+      alert(`Etap ${etapNr}: wybierz typ treningu.`);
+      return;
+    }
+
+    /* najpierw insert etapu */
+    const { data: eData, error: eErr } = await supabase
+      .from('etapdowykonania')
+      .insert([{
+        id_treningudw: treningId,
+        id_typutreningu: idTypu,
+        kolejnosc_etapu: etapNr
+      }])
+      .select()
+      .single();
+
+    if (eErr) {
+      alert(`Błąd zapisu etapu ${etapNr}: ${eErr.message}`);
+      return;
+    }
+
+    const etapId = eData.id_etapudw;
+
+
+    /* teraz parametry etapu */
+    const inputs = div.querySelectorAll('input[name]');
+    const paramInserts = [];
+
+    for (const inp of inputs) {
+      const parts = inp.name.split('-');  
+      const id_param = parts[2];
+      const val = inp.value.trim();
+
+      /* ---------------- WALIDACJA WG TYPDANYCH ---------------- */
+
+      const paramName = parametry[idTypu].find(p => p.id_parametrówtt == id_param)?.nazwaparametru;
+
+      if (paramName === 'tempo' || paramName === 'czas' || paramName === 'czasprzerwy') {
+        if (!validateTime(val)) {
+          alert(`Etap ${etapNr}: parametr "${paramName}" musi być w formacie mm:ss`);
+          return;
+        }
+      }
+
+      if (paramName === 'dystans' || paramName === 'dystansprzerwy') {
+        if (!validateFloat(val)) {
+          alert(`Etap ${etapNr}: "${paramName}" musi być liczbą z kropką (np. 6.20)`);
+          return;
+        }
+      }
+
+      if (paramName === 'tętno' || paramName === 'ilosc_powtorzen') {
+        if (!validateInt(val)) {
+          alert(`Etap ${etapNr}: "${paramName}" musi być liczbą całkowitą`);
+          return;
+        }
+      }
+
+      /* dodajemy do listy insertów */
+      paramInserts.push({
+        id_etapudw: etapId,
+        id_parametrówtt: id_param,
+        wartosc_parametru: val
+      });
+    }
+
+    /* insert parametrów */
+    if (paramInserts.length > 0) {
+      const { error: pErr } = await supabase
+        .from('parametryetapudowykonania')
+        .insert(paramInserts);
+
+      if (pErr) {
+        alert(`Błąd zapisu parametrów etapu ${etapNr}: ${pErr.message}`);
+        return;
+      }
+    }
+  }
+
+
+  alert('Trening został zlecony pomyślnie!');
+  window.location.href = 'dashboard.html';
+}
+
+</script>
+</body>
+</html>

@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Statystyki treningowe</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    .stats-container {
+      max-width: 900px;
+      width: 100%;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1em;
+      margin-top: 1em;
+    }
+    @media (min-width: 900px) {
+      .stats-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    .card {
+      border-radius: 8px;
+      padding: 1em;
+      border: 1px solid #ddd;
+      background: #fafafa;
+    }
+    .card h3 {
+      margin-top: 0;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.4em;
+    }
+    .stat-label {
+      font-weight: bold;
+    }
+    .stat-value {
+      font-family: monospace;
+    }
+    .form-group {
+      margin-top: 0.8em;
+      margin-bottom: 0.8em;
+    }
+    #athlete-wrapper {
+      display: none;
+      margin-top: 0.5em;
+    }
+    #charts {
+      margin-top: 1.5em;
+    }
+    .chart-block {
+      margin-bottom: 1.5em;
+    }
+    .chart-controls {
+      text-align: center;
+      margin-bottom: 0.5em;
+    }
+    .chart-controls button {
+      width: auto;
+      padding: 0.3em 0.75em;
+      margin: 0 0.2em;
+      font-size: 0.9em;
+    }
+    .range-active {
+      background-color: #0056b3;
+      color: #fff;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.5em;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 0.4em;
+      text-align: center;
+    }
+    th {
+      background-color: #eee;
+    }
+    #no-data {
+      margin-top: 1em;
+      text-align: center;
+      font-style: italic;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="container stats-container">
+    <h2>Statystyki treningowe</h2>
+
+    <div id="role-info" style="margin-top:0.5em; font-size:0.9em; opacity:0.8;"></div>
+
+    <div id="athlete-wrapper" class="form-group">
+      <label for="athleteSelect">Wybierz zawodnika:</label>
+      <select id="athleteSelect"></select>
+    </div>
+
+    <div id="no-data" style="display:none;">Brak danych do wyświetlenia.</div>
+
+    <!-- GRID NA KARTY -->
+    <div id="stats-grid" class="stats-grid" style="display:none;">
+
+      <!-- PODSUMOWANIE -->
+      <div class="card" id="summary-card">
+        <h3>Podsumowanie</h3>
+        <div class="stat-row">
+          <span class="stat-label">Zadane treningi:</span>
+          <span class="stat-value" id="sum-planned">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Wykonane treningi:</span>
+          <span class="stat-value" id="sum-done">0</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Realizacja planu:</span>
+          <span class="stat-value" id="sum-percent">0%</span>
+        </div>
+      </div>
+
+      <!-- WYBIEGANIE -->
+      <div class="card">
+        <h3>Wybieganie</h3>
+        <div class="stat-row">
+          <span class="stat-label">Suma kilometrów [km]:</span>
+          <span class="stat-value" id="wyb-km">–</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Średnie tempo [min/km]:</span>
+          <span class="stat-value" id="wyb-pace">–</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Średnie tętno [bpm]:</span>
+          <span class="stat-value" id="wyb-hr">–</span>
+        </div>
+      </div>
+
+      <!-- TEMPO -->
+      <div class="card" style="grid-column:1 / -1;">
+        <h3>Tempo (według dystansu odcinka)</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Dystans</th>
+              <th>Liczba powtórzeń</th>
+              <th>Łączny dystans</th>
+              <th>Średni czas</th>
+              <th>Najszybszy czas</th>
+              <th>Najwolniejszy czas</th>
+            </tr>
+          </thead>
+          <tbody id="tempo-table-body">
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- WYKRESY -->
+    <div id="charts" style="display:none;">
+      <div class="chart-block">
+        <h3>Trend dystansu</h3>
+        <div class="chart-controls" id="dist-range-buttons">
+          <button data-range="7">7 dni</button>
+          <button data-range="30">30 dni</button>
+          <button data-range="180">180 dni</button>
+        </div>
+        <canvas id="distanceChart" height="150"></canvas>
+      </div>
+
+      <div class="chart-block">
+        <h3>Trend tętna (wybieganie)</h3>
+        <div class="chart-controls" id="hr-range-buttons">
+          <button data-range="7">7 dni</button>
+          <button data-range="30">30 dni</button>
+          <button data-range="180">180 dni</button>
+        </div>
+        <canvas id="hrChart" height="150"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { supabase } from './supabase.js';
+
+    /* =================== HELPERY =================== */
+
+    function parseTime(t) {
+      if (!t) return null;
+      const parts = t.split(':');
+      if (parts.length !== 2) return null;
+      const m = Number(parts[0]);
+      const s = Number(parts[1]);
+      if (Number.isNaN(m) || Number.isNaN(s)) return null;
+      return m * 60 + s;
+    }
+
+    function formatTime(sec) {
+      if (sec == null || !Number.isFinite(sec)) return '–';
+      const m = Math.floor(sec / 60);
+      const s = Math.round(sec % 60);
+      return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+
+    function avg(arr) {
+      if (!arr.length) return null;
+      return arr.reduce((a, b) => a + b, 0) / arr.length;
+    }
+
+    function dateKey(date) {
+      return date.toISOString().slice(0, 10);
+    }
+
+    // Dane do wykresów dla aktualnie wybranego zawodnika
+    let chartDist = null;
+    let chartHr = null;
+    // key: YYYY-MM-DD -> { date, wybDist, tempoDist, totalDist, wybHrSum, wybHrCount }
+    let aggByDate = {};
+
+    /* =================== INICJALIZACJA =================== */
+
+    document.addEventListener('DOMContentLoaded', () => {
+      initStatsPage();
+    });
+
+    async function initStatsPage() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        window.location.href = "login.html";
+        return;
+      }
+
+      const roleInfo = document.getElementById('role-info');
+      const athleteWrapper = document.getElementById('athlete-wrapper');
+      const athleteSelect = document.getElementById('athleteSelect');
+
+      // 1) trener?
+      const { data: trener } = await supabase
+        .from('trener')
+        .select('id_trenera, imię')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      // 2) zawodnik?
+      const { data: zawodnik } = await supabase
+        .from('zawodnik')
+        .select('id_zawodnika, imię, id_trenera')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      let initialAthleteId = null;
+      let athleteOptions = [];
+
+      // A) użytkownik jest trenerem
+      if (trener) {
+        roleInfo.textContent = `Tryb: Trener (${trener.imię})`;
+
+        athleteWrapper.style.display = 'block';
+        athleteSelect.innerHTML = '';
+
+        const { data: athletes } = await supabase
+          .from('zawodnik')
+          .select('id_zawodnika, imię')
+          .eq('id_trenera', trener.id_trenera)
+          .order('imię', { ascending: true });
+
+        athleteOptions = athletes || [];
+
+        // jeśli trener jest także zawodnikiem – dodaj „(Ja)”
+        if (zawodnik) {
+          athleteOptions.unshift({
+            id_zawodnika: zawodnik.id_zawodnika,
+            imię: zawodnik.imię + ' (Ja)'
+          });
+        }
+
+        athleteOptions.forEach(z => {
+          const opt = document.createElement('option');
+          opt.value = z.id_zawodnika;
+          opt.textContent = z.imię;
+          athleteSelect.appendChild(opt);
+        });
+
+        if (!athleteOptions.length) {
+          showNoData('Brak przypisanych zawodników.');
+          return;
+        }
+
+        initialAthleteId = athleteOptions[0].id_zawodnika;
+
+        athleteSelect.addEventListener('change', () => {
+          loadStatsForAthlete(athleteSelect.value);
+        });
+      }
+      // B) tylko zawodnik
+      else if (zawodnik) {
+        roleInfo.textContent = `Tryb: Zawodnik (${zawodnik.imię})`;
+        athleteWrapper.style.display = 'none';
+        initialAthleteId = zawodnik.id_zawodnika;
+      } else {
+        roleInfo.textContent = 'Brak roli (ani trener, ani zawodnik).';
+        showNoData('Brak roli w systemie.');
+        return;
+      }
+
+      await loadStatsForAthlete(initialAthleteId);
+    }
+
+    /* =================== GŁÓWNA FUNKCJA ŁADUJĄCA =================== */
+
+    async function loadStatsForAthlete(zawodnikId) {
+      document.getElementById('no-data').style.display = 'none';
+      document.getElementById('stats-grid').style.display = 'none';
+      document.getElementById('charts').style.display = 'none';
+
+      if (!zawodnikId) {
+        showNoData('Brak wybranego zawodnika.');
+        return;
+      }
+
+      // 1. wykonane treningi
+      const { data: done, error: errDone } = await supabase
+        .from('treningwykonany')
+        .select('id_treningwykonany, data_treninguw')
+        .eq('id_zawodnika', zawodnikId);
+
+      if (errDone) {
+        console.error(errDone);
+        showNoData('Błąd ładowania wykonanych treningów.');
+        return;
+      }
+
+      const doneCount = done ? done.length : 0;
+
+      // 2. wszystkie zaplanowane treningi
+      const { data: planned, error: errPlanned } = await supabase
+        .from('treningdowykonania')
+        .select('id_treningudw')
+        .eq('id_zawodnika', zawodnikId);
+
+      if (errPlanned) console.error(errPlanned);
+
+      const plannedCount = planned ? planned.length : 0;
+      const percent = plannedCount > 0
+        ? Math.round((doneCount / plannedCount) * 100)
+        : 0;
+
+      document.getElementById('sum-planned').textContent = plannedCount;
+      document.getElementById('sum-done').textContent = doneCount;
+      document.getElementById('sum-percent').textContent =
+        plannedCount ? `${percent}%` : '–';
+
+      if (!done || !done.length) {
+        showNoData('Zawodnik nie ma jeszcze wykonanych treningów.');
+        return;
+      }
+
+      // mapowanie dat
+      const dateMap = {};
+      done.forEach(t => {
+        dateMap[t.id_treningwykonany] = new Date(t.data_treninguw);
+      });
+
+      const trainingIds = done.map(t => t.id_treningwykonany);
+
+      /* 3. WYBIEGANIE – widok */
+
+      const { data: wybRows, error: errWyb } = await supabase
+        .from('vw_etap_wybieganie_wykonany')
+        .select('id_treninguw, tempo, dystans, tetno');
+
+      if (errWyb) console.error(errWyb);
+
+      const wyb = (wybRows || []).filter(r => trainingIds.includes(r.id_treninguw));
+
+      let sumKmWyb = 0;
+      const wybTempoSec = [];
+      const wybHrArr = [];
+
+      wyb.forEach(r => {
+        if (r.dystans != null) sumKmWyb += Number(r.dystans);
+        const sec = parseTime(r.tempo);
+        if (sec != null) wybTempoSec.push(sec);
+        if (r.tetno != null) wybHrArr.push(Number(r.tetno));
+      });
+
+      const avgTempoSec = avg(wybTempoSec);
+      const avgHrVal = avg(wybHrArr);
+
+      document.getElementById('wyb-km').textContent =
+        sumKmWyb ? sumKmWyb.toFixed(2) : '0';
+      document.getElementById('wyb-pace').textContent = formatTime(avgTempoSec);
+      document.getElementById('wyb-hr').textContent =
+        avgHrVal != null ? Math.round(avgHrVal) + ' bpm' : '–';
+
+      /* 4. TEMPO – widok */
+
+      const { data: tempoRows, error: errTempo } = await supabase
+        .from('vw_etap_tempo_wykonany')
+        .select('id_treninguw, numer_powtorzenia, czas, dystans');
+
+      if (errTempo) console.error(errTempo);
+
+      const tempo = (tempoRows || []).filter(r => trainingIds.includes(r.id_treninguw));
+
+      const tempoByDist = {};
+      tempo.forEach(r => {
+        if (!r.dystans) return;
+        const key = String(r.dystans);
+        const sec = parseTime(r.czas);
+        if (sec == null) return;
+
+        if (!tempoByDist[key]) tempoByDist[key] = { dist: Number(key), times: [] };
+        tempoByDist[key].times.push(sec);
+      });
+
+      const tbody = document.getElementById('tempo-table-body');
+      tbody.innerHTML = '';
+
+      Object.values(tempoByDist)
+        .sort((a, b) => a.dist - b.dist)
+        .forEach(group => {
+          const times = group.times;
+          const avgT = avg(times);
+          const best = Math.min(...times);
+          const worst = Math.max(...times);
+          const totalDist = group.dist * times.length;
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${group.dist}</td>
+            <td>${times.length}</td>
+            <td>${totalDist.toFixed(2)}</td>
+            <td>${formatTime(avgT)}</td>
+            <td>${formatTime(best)}</td>
+            <td>${formatTime(worst)}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+      const tempoEtapCount = tempo.length;
+      const wybEtapCount = wyb.length;
+      document.getElementById('sum-ratio').textContent =
+        `${tempoEtapCount} : ${wybEtapCount}`;
+
+      /* 5. Przygotowanie danych do wykresów (wybieganie + tempo + łączny dystans) */
+
+      aggByDate = {};
+
+      function ensureDateEntry(idTreningu) {
+        const d = dateMap[idTreningu];
+        if (!d) return null;
+        const key = dateKey(d);
+        if (!aggByDate[key]) {
+          aggByDate[key] = {
+            date: d,
+            wybDist: 0,
+            tempoDist: 0,
+            totalDist: 0,
+            wybHrSum: 0,
+            wybHrCount: 0
+          };
+        }
+        return aggByDate[key];
+      }
+
+      // wybieganie
+      wyb.forEach(r => {
+        const entry = ensureDateEntry(r.id_treninguw);
+        if (!entry) return;
+        if (r.dystans != null) {
+          const v = Number(r.dystans);
+          entry.wybDist += v;
+          entry.totalDist += v;
+        }
+        if (r.tetno != null) {
+          entry.wybHrSum += Number(r.tetno);
+          entry.wybHrCount += 1;
+        }
+      });
+
+      // tempo
+      tempo.forEach(r => {
+        const entry = ensureDateEntry(r.id_treninguw);
+        if (!entry) return;
+        if (r.dystans != null) {
+          const v = Number(r.dystans);
+          entry.tempoDist += v;
+          entry.totalDist += v;
+        }
+      });
+
+      // 6. Pokaż sekcje + wykresy
+      document.getElementById('stats-grid').style.display = 'grid';
+      document.getElementById('charts').style.display = 'block';
+
+      setupRangeButtons();
+      updateCharts(7); // startowo 7 dni
+    }
+
+    /* =================== WYKRESY =================== */
+
+    function setupRangeButtons() {
+      const distBtns = document.querySelectorAll('#dist-range-buttons button');
+      const hrBtns = document.querySelectorAll('#hr-range-buttons button');
+
+      distBtns.forEach(btn => {
+        btn.onclick = () => {
+          const range = Number(btn.dataset.range);
+          updateCharts(range);
+          distBtns.forEach(b => b.classList.remove('range-active'));
+          btn.classList.add('range-active');
+        };
+      });
+
+      hrBtns.forEach(btn => {
+        btn.onclick = () => {
+          const range = Number(btn.dataset.range);
+          updateCharts(range);
+          hrBtns.forEach(b => b.classList.remove('range-active'));
+          btn.classList.add('range-active');
+        };
+      });
+
+      // domyślnie 7 dni jako aktywne
+      document
+        .querySelectorAll('[data-range="7"]')
+        .forEach(b => b.classList.add('range-active'));
+    }
+
+    function showNoData(message = 'Brak danych do wyświetlenia.') {
+      document.getElementById('no-data').textContent = message;
+      document.getElementById('no-data').style.display = 'block';
+      document.getElementById('stats-grid').style.display = 'none';
+      document.getElementById('charts').style.display = 'none';
+    }
+
+    function updateCharts(days) {
+      const entries = Object.values(aggByDate);
+      if (!entries.length) {
+        if (chartDist) { chartDist.destroy(); chartDist = null; }
+        if (chartHr) { chartHr.destroy(); chartHr = null; }
+        return;
+      }
+
+      const now = new Date();
+      const minDate = new Date(now);
+      minDate.setDate(minDate.getDate() - days + 1);
+
+      const filtered = entries
+        .filter(e => e.date >= minDate && e.date <= now)
+        .sort((a, b) => a.date - b.date);
+
+      const labels = filtered.map(e => dateKey(e.date));
+      const wybDistData = filtered.map(e => e.wybDist);
+      const tempoDistData = filtered.map(e => e.tempoDist);
+      const totalDistData = filtered.map(e => e.totalDist);
+      const hrData = filtered.map(e =>
+        e.wybHrCount ? e.wybHrSum / e.wybHrCount : null
+      );
+
+      const distCtx = document.getElementById('distanceChart').getContext('2d');
+      const hrCtx = document.getElementById('hrChart').getContext('2d');
+
+      if (chartDist) chartDist.destroy();
+      if (chartHr) chartHr.destroy();
+
+      chartDist = new Chart(distCtx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Wybieganie [km]',
+              data: wybDistData,
+              tension: 0.2
+            },
+            {
+              label: 'Tempo (odcinki) [km]',
+              data: tempoDistData,
+              tension: 0.2,
+              borderDash: [5, 5]
+            },
+            {
+              label: 'Łącznie [km]',
+              data: totalDistData,
+              tension: 0.2
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: true } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+
+      chartHr = new Chart(hrCtx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Średnie tętno (wybieganie) [bpm]',
+            data: hrData,
+            tension: 0.2
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: true } },
+          scales: { y: { beginAtZero: false } }
+        }
+      });
+    }
+  </script>
+</body>
+</html>

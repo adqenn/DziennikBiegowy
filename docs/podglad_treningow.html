@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Podgląd treningów</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .top-bar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 0.8rem;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .top-bar select { max-width: 260px; }
+    .training-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.3rem; font-size: 0.95rem; }
+    .training-meta { margin-top: 0; margin-bottom: 0.8rem; font-size: 0.9rem; opacity: 0.85; }
+    .training-compare { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 0.4rem; }
+    .side-box { flex: 1; min-width: 260px; border-radius: 20px; border: 2px solid #333; padding: 1rem 1.5rem; background: #fff; box-sizing: border-box; }
+    .side-box h4 { margin-top: 0; margin-bottom: 0.6rem; text-align: center; }
+    .comp-block + .comp-block { margin-top: 0.75rem; border-top: 1px solid #eee; padding-top: 0.5rem; }
+    .empty-info { font-style: italic; opacity: 0.8; }
+    .back-link { display: inline-block; margin-top: 1.2rem; font-size: 0.95rem; }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h2>Podgląd treningów zawodników</h2>
+
+    <div id="only-trener-msg" style="display:none; color:#b00; margin-bottom:1rem;">
+      Ta strona jest dostępna tylko dla trenerów.
+    </div>
+
+    <div class="top-bar" id="top-bar" style="display:none;">
+      <div id="trainer-info" style="opacity:0.8;"></div>
+      <div>
+        <label for="athleteSelect">Zawodnik:</label>
+        <select id="athleteSelect"></select>
+      </div>
+    </div>
+
+    <div id="info-msg" class="empty-info" style="display:none;"></div>
+    <div id="training-list"></div>
+
+    <a href="dashboard.html" class="back-link">← Wróć do panelu</a>
+  </div>
+
+<script type="module">
+import { supabase } from './supabase.js';
+
+const trainerInfoEl = document.getElementById('trainer-info');
+const athleteSelect = document.getElementById('athleteSelect');
+const topBar = document.getElementById('top-bar');
+const onlyTrenerMsg = document.getElementById('only-trener-msg');
+const infoMsg = document.getElementById('info-msg');
+const trainingList = document.getElementById('training-list');
+
+let wybieganieTypeId = null;
+let tempoTypeId = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+  initPage();
+});
+
+async function initPage() {
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    window.location.href = 'login.html';
+    return;
+  }
+
+  // 1. Czy trener?
+  const { data: trener } = await supabase
+    .from('trener')
+    .select('id_trenera, imię')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (!trener) {
+    onlyTrenerMsg.style.display = 'block';
+    return;
+  }
+
+  trainerInfoEl.textContent = `Zalogowany trener: ${trener.imię}`;
+  topBar.style.display = 'flex';
+
+  // 2. Typy treningów
+  const { data: typy } = await supabase
+    .from('typtreningu')
+    .select('id_typutreningu, nazwa');
+
+  if (typy) {
+    for (const t of typy) {
+      const n = (t.nazwa || '').toLowerCase();
+      if (n === 'wybieganie') wybieganieTypeId = t.id_typutreningu;
+      if (n === 'tempo') tempoTypeId = t.id_typutreningu;
+    }
+  }
+
+  // 3. Lista zawodników
+  const { data: athletes } = await supabase
+    .from('zawodnik')
+    .select('id_zawodnika, imię')
+    .eq('id_trenera', trener.id_trenera)
+    .order('imię', { ascending: true });
+
+  let athleteOptions = athletes || [];
+
+  // trener jako zawodnik
+  const { data: trenerAsAthlete } = await supabase
+    .from('zawodnik')
+    .select('id_zawodnika, imię, id_trenera')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (trenerAsAthlete &&
+      trenerAsAthlete.id_trenera === trener.id_trenera) {
+    athleteOptions.unshift({
+      id_zawodnika: trenerAsAthlete.id_zawodnika,
+      imię: trenerAsAthlete.imię + ' (Ja)'
+    });
+  }
+
+  if (!athleteOptions.length) {
+    infoMsg.textContent = 'Brak przypisanych zawodników.';
+    infoMsg.style.display = 'block';
+    return;
+  }
+
+  athleteSelect.innerHTML = '';
+  athleteOptions.forEach(z => {
+    const opt = document.createElement('option');
+    opt.value = z.id_zawodnika;
+    opt.textContent = z.imię;
+    athleteSelect.appendChild(opt);
+  });
+
+  athleteSelect.addEventListener('change', () => {
+    loadTrainingsForAthlete(athleteSelect.value);
+  });
+
+  await loadTrainingsForAthlete(athleteOptions[0].id_zawodnika);
+}
+
+async function loadTrainingsForAthlete(zawodnikId) {
+  trainingList.innerHTML = '';
+  infoMsg.style.display = 'none';
+
+  if (!zawodnikId) {
+    infoMsg.textContent = 'Brak wybranego zawodnika.';
+    infoMsg.style.display = 'block';
+    return;
+  }
+
+  const { data: done, error: errDone } = await supabase
+    .from('treningwykonany')
+    .select('id_treningwykonany, id_treningudw, data_treninguw, id_zawodnika') 
+    
+
+    .eq('id_zawodnika', zawodnikId)
+    .order('data_treninguw', { ascending: false });
+
+  if (errDone) {
+    infoMsg.textContent = 'Błąd ładowania wykonanych treningów.';
+    infoMsg.style.display = 'block';
+    return;
+  }
+
+  if (!done || !done.length) {
+    infoMsg.textContent = 'Zawodnik nie ma jeszcze wykonanych treningów.';
+    infoMsg.style.display = 'block';
+    return;
+  }
+
+  for (const tr of done) {
+    const card = await buildTrainingCard(tr);
+    trainingList.appendChild(card);
+  }
+}
+async function buildTrainingCard(treningW) {
+  const card = document.createElement('div');
+  card.className = 'card';
+
+  // Pobieramy PLAN
+  const { data: plan } = await supabase
+    .from('treningdowykonania')
+    .select('data_treningudw, uwagi_treningudw, ileetapów_treningudw')
+    .eq('id_treningudw', treningW.id_treningudw)   
+    .maybeSingle();
+
+  const dataPlanu = plan?.data_treningudw
+    ? new Date(plan.data_treningudw).toLocaleDateString('pl-PL')
+    : '–';
+
+  const dataWykonania = treningW.data_treninguw
+    ? new Date(treningW.data_treninguw).toLocaleDateString('pl-PL')
+    : '–';
+
+  const ileEtapowPlan = plan?.ileetapów_treningudw ?? '–';
+
+  const header = document.createElement('div');
+  header.className = 'training-header';
+  header.innerHTML = `
+    <div>Data planu: ${dataPlanu}<br/>Data wykonania: ${dataWykonania}</div>
+    <div>Etapy: ${ileEtapowPlan}</div>
+  `;
+  card.appendChild(header);
+
+  if (plan?.uwagi_treningudw) {
+    const uw = document.createElement('p');
+    uw.className = 'training-meta';
+    uw.innerHTML = `<strong>Uwagi trenera:</strong> ${plan.uwagi_treningudw}`;
+    card.appendChild(uw);
+  }
+
+  const compare = document.createElement('div');
+  compare.className = 'training-compare';
+
+  const left = document.createElement('div');
+  left.className = 'side-box';
+  left.innerHTML = `<h4>Trening zadany</h4>`;
+
+  const right = document.createElement('div');
+  right.className = 'side-box';
+  right.innerHTML = `<h4>Trening wykonany</h4>`;
+
+  // ETAPY PLANU
+  const { data: etapyPlan } = await supabase
+    .from('etapdowykonania')
+    .select('id_etapudw, kolejnosc_etapu, id_typutreningu')
+    .eq('id_treningudw', treningW.id_treningudw)  
+    .order('kolejnosc_etapu', { ascending: true });
+
+  // WYKONANIE - wybieganie
+  const { data: wybieganiaWyk } = await supabase
+    .from('vw_etap_wybieganie_wykonany')
+    .select('tempo, dystans, tetno, id_treninguw')
+    .eq('id_treninguw', treningW.id_treningwykonany);  
+
+  // WYKONANIE - tempo
+  const { data: tempoWyk } = await supabase
+    .from('vw_etap_tempo_wykonany')
+    .select('numer_powtorzenia, czas, czas_przerwy, dystans, dystans_przerwy, id_treninguw')
+    .eq('id_treninguw', treningW.id_treningwykonany)   
+    .order('numer_powtorzenia', { ascending: true });
+
+  if (!etapyPlan || !etapyPlan.length) {
+    left.innerHTML += `<p class="empty-info">Brak szczegółowych etapów w planie.</p>`;
+    right.innerHTML += `<p class="empty-info">Brak zapisanych etapów w wykonaniu.</p>`;
+  } else {
+    for (const etap of etapyPlan) {
+
+      const blockPlan = document.createElement('div');
+      blockPlan.className = 'comp-block';
+
+      const blockWyk = document.createElement('div');
+      blockWyk.className = 'comp-block';
+
+      let nazwaEtapu = `Etap ${etap.kolejnosc_etapu}`;
+      if (etap.id_typutreningu === wybieganieTypeId) {
+        nazwaEtapu += ' — Wybieganie';
+      } else if (etap.id_typutreningu === tempoTypeId) {
+        nazwaEtapu += ' — Tempo';
+      }
+
+      /* ----- PLAN WYBIEGANIE ----- */
+      if (etap.id_typutreningu === wybieganieTypeId) {
+
+        const { data: rowPlanWy } = await supabase
+          .from('vw_etap_wybieganie_plan')
+          .select('tempo, dystans, tetno')
+          .eq('id_etapudw', etap.id_etapudw)
+          .maybeSingle();
+
+        if (!rowPlanWy) {
+          blockPlan.innerHTML = 
+           `<p><strong>${nazwaEtapu}</strong></p>
+            <p class="empty-info">Brak danych planu wybiegania.</p>`;
+        } else {
+          blockPlan.innerHTML =
+           `<p><strong>${nazwaEtapu}</strong></p>
+            <p>Dystans: ${rowPlanWy.dystans} km</p>
+            <p>Docelowe tempo: ${rowPlanWy.tempo}</p>
+            <p>Tętno: ${rowPlanWy.tetno} bpm</p>`;
+        }
+
+        const rowWykWy = wybieganiaWyk?.[0] ?? null;
+        if (!rowWykWy) {
+          blockWyk.innerHTML =
+            `<p><strong>${nazwaEtapu}</strong></p>
+             <p class="empty-info">Brak zapisanego wybiegania w wykonaniu.</p>`;
+        } else {
+          blockWyk.innerHTML = `
+             <p><strong>${nazwaEtapu}</strong></p>
+             <p>Dystans: ${rowWykWy.dystans} km</p>
+             <p>Tempo: ${rowWykWy.tempo}</p>
+             <p>Tętno: ${rowWykWy.tetno} bpm</p>`;
+        }
+
+      }
+      /* ----- PLAN TEMPO ----- */
+      else if (etap.id_typutreningu === tempoTypeId) {
+
+        const { data: rowPlanTempo } = await supabase
+          .from('vw_etap_tempo_plan')
+          .select('czas, czasprzerwy, dystans, dystansprzerwy, ilosc_powtorzen')
+          .eq('id_etapudw', etap.id_etapudw)
+          .maybeSingle();
+
+        if (!rowPlanTempo) {
+          blockPlan.innerHTML =
+           `<p><strong>${nazwaEtapu}</strong></p>
+            <p class="empty-info">Brak danych planu tempa.</p>`;
+        } else {
+          blockPlan.innerHTML = `
+            <p><strong>${nazwaEtapu}</strong></p>
+            <p>Liczba powtórzeń: ${rowPlanTempo.ilosc_powtorzen}</p>
+            <p>Odcinek: ${rowPlanTempo.dystans} km</p>
+            <p>Przerwa: ${rowPlanTempo.dystansprzerwy} km</p>
+            <p>Czas odcinka (plan): ${rowPlanTempo.czas}</p>
+            <p>Czas przerwy (plan): ${rowPlanTempo.czasprzerwy}</p>`;
+        }
+
+        if (!tempoWyk || !tempoWyk.length) {
+          blockWyk.innerHTML =
+           `<p><strong>${nazwaEtapu}</strong></p>
+            <p class="empty-info">Brak zapisanych powtórzeń w wykonaniu.</p>`;
+        } else {
+          let html = `<p><strong>${nazwaEtapu}</strong></p>`;
+          tempoWyk.forEach(row => {
+            html += `
+              <p>czas ${row.numer_powtorzenia}: ${row.czas}</p>
+              <p>czas przerwy ${row.numer_powtorzenia}: ${row.czas_przerwy}</p>`;
+          });
+          blockWyk.innerHTML = html;
+        }
+      }
+
+      left.appendChild(blockPlan);
+      right.appendChild(blockWyk);
+    }
+  }
+
+  compare.appendChild(left);
+  compare.appendChild(right);
+  card.appendChild(compare);
+
+  return card;
+}
+</script>
+
+</body>
+</html>
