@@ -78,6 +78,16 @@ function validateInt(str) {
 let typy = [];
 let parametry = {};
 
+const PARAM_LABELS = {
+  dystans: 'Dystans [km]',
+  dystansprzerwy: 'Przerwa [km]',
+  tempo: 'Tempo',
+  czas: 'Czas odcinka',
+  czasprzerwy: 'Czas przerwy',
+  tętno: 'Tętno [bpm]',
+  ilosc_powtorzen: 'Liczba powtórzeń'
+};
+
 
 document.addEventListener('DOMContentLoaded', async () => {
   await loadZawodnicy();
@@ -187,6 +197,9 @@ function onTypChange(e) {
   const etapDiv = select.closest('.etap');
   const idTypu = select.value;
   const paramsDiv = etapDiv.querySelector('.parametry');
+  const name = p.nazwaparametru;
+  const labelText = PARAM_LABELS[name] || name;
+
 
   paramsDiv.innerHTML = '';
 
@@ -216,16 +229,17 @@ function onTypChange(e) {
     const fm = document.createElement('div');
     fm.className = 'form-group';
 
-    fm.innerHTML = `
-      <label>${name}:</label>
-      <input 
-        type="${inputType}" 
-        step="${inputType === 'number' ? '0.01' : ''}"
-        name="param-${etapDiv.dataset.etap}-${p.id_parametrówtt}"
-        placeholder="${placeholder}"
-        required
-      />
-    `;
+fm.innerHTML = `
+  <label>${labelText}:</label>
+  <input 
+    type="${inputType}" 
+    step="${inputType === 'number' ? '0.01' : ''}"
+    name="param-${etapDiv.dataset.etap}-${p.id_parametrówtt}"
+    placeholder="${placeholder}"
+    required
+  />
+`;
+
 
     paramsDiv.appendChild(fm);
   });
@@ -428,3 +442,4 @@ async function submitForm(e) {
 </script>
 </body>
 </html>
+
