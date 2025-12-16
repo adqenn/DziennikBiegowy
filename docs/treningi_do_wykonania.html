@@ -205,7 +205,7 @@ async function wypelnijWybieganie(id_etap, div) {
 async function wypelnijTempo(id_etap, div) {
   const { data: row } = await supabase
     .from("vw_etap_tempo_plan")
-    .select("dystans, dystans_przerwy, ilosc_powtorzen")
+    .select("czas, czas_przerwy, dystans, dystans_przerwy, ilosc_powtorzen")
     .eq("id_etapudw", id_etap)
     .maybeSingle();
 
@@ -226,5 +226,6 @@ async function wypelnijTempo(id_etap, div) {
 
 </body>
 </html>
+
 
 
