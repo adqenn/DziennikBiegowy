@@ -319,9 +319,9 @@ async function buildTrainingCard(treningW) {
             <p><strong>${nazwaEtapu}</strong></p>
             <p>Liczba powtórzeń: ${rowPlanTempo.ilosc_powtorzen}</p>
             <p>Odcinek: ${rowPlanTempo.dystans} km</p>
-            <p>Przerwa: ${rowPlanTempo.dystansprzerwy} km</p>
+            <p>Przerwa: ${rowPlanTempo.dystans_przerwy} km</p>
             <p>Czas odcinka (plan): ${rowPlanTempo.czas}</p>
-            <p>Czas przerwy (plan): ${rowPlanTempo.czasprzerwy}</p>`;
+            <p>Czas przerwy (plan): ${rowPlanTempo.czas_przerwy}</p>`;
         }
 
         if (!tempoWyk || !tempoWyk.length) {
@@ -354,4 +354,5 @@ async function buildTrainingCard(treningW) {
 
 </body>
 </html>
+
 
