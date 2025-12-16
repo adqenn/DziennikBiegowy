@@ -197,53 +197,47 @@ function onTypChange(e) {
   const etapDiv = select.closest('.etap');
   const idTypu = select.value;
   const paramsDiv = etapDiv.querySelector('.parametry');
-  const name = p.nazwaparametru;
-  const labelText = PARAM_LABELS[name] || name;
-
 
   paramsDiv.innerHTML = '';
-
   if (!idTypu) return;
 
   const ps = parametry[idTypu] || [];
 
-  /* generowanie inputów z poprawnymi typami i placeholderami */
   ps.forEach(p => {
     const name = p.nazwaparametru;
-    let placeholder = "";
-    let inputType = "text";
+    const labelText = PARAM_LABELS[name] || name;
 
-    if (name === 'tempo' || name === 'czas' || name === 'czasprzerwy') {
-      placeholder = "mm:ss";
-      inputType = "text";
-    }
-    else if (name === 'dystans' || name === 'dystansprzerwy') {
-      placeholder = "np. 6.20";
-      inputType = "number";
-    }
-    else if (name === 'tętno' || name === 'ilosc_powtorzen') {
-      placeholder = "np. 140";
-      inputType = "number";
+    let placeholder = '';
+    let inputType = 'text';
+
+    if (['tempo', 'czas', 'czasprzerwy'].includes(name)) {
+      placeholder = 'mm:ss';
+    } else if (['dystans', 'dystansprzerwy'].includes(name)) {
+      placeholder = 'np. 6.20';
+      inputType = 'number';
+    } else if (['tętno', 'ilosc_powtorzen'].includes(name)) {
+      placeholder = 'np. 140';
+      inputType = 'number';
     }
 
     const fm = document.createElement('div');
     fm.className = 'form-group';
 
-fm.innerHTML = `
-  <label>${labelText}:</label>
-  <input 
-    type="${inputType}" 
-    step="${inputType === 'number' ? '0.01' : ''}"
-    name="param-${etapDiv.dataset.etap}-${p.id_parametrówtt}"
-    placeholder="${placeholder}"
-    required
-  />
-`;
-
+    fm.innerHTML = `
+      <label>${labelText}:</label>
+      <input
+        type="${inputType}"
+        step="${inputType === 'number' ? '0.01' : ''}"
+        name="param-${etapDiv.dataset.etap}-${p.id_parametrówtt}"
+        placeholder="${placeholder}"
+        required
+      />
+    `;
 
     paramsDiv.appendChild(fm);
   });
 }
+
 /*---------------------WALIDACJA--------------------------------------*/
 async function validateBeforeInsert() {
   const errors = [];
@@ -442,4 +436,5 @@ async function submitForm(e) {
 </script>
 </body>
 </html>
+
 
