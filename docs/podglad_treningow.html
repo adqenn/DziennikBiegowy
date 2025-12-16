@@ -306,7 +306,7 @@ async function buildTrainingCard(treningW) {
 
         const { data: rowPlanTempo } = await supabase
           .from('vw_etap_tempo_plan')
-          .select('czas, czasprzerwy, dystans, dystansprzerwy, ilosc_powtorzen')
+          .select('czas, czas_przerwy, dystans, dystans_przerwy, ilosc_powtorzen')
           .eq('id_etapudw', etap.id_etapudw)
           .maybeSingle();
 
@@ -354,3 +354,4 @@ async function buildTrainingCard(treningW) {
 
 </body>
 </html>
+
