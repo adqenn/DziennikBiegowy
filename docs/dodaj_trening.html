@@ -274,6 +274,7 @@ async function validateAllInputs() {
   const errors = [];
 
   for (let etap of currentEtapy) {
+    // --- odczyt typu treningu ---
     const { data: typ, error: errT } = await supabase
       .from('typtreningu')
       .select('nazwa')
@@ -287,10 +288,26 @@ async function validateAllInputs() {
 
     const typN = typ.nazwa?.toLowerCase();
 
+    // ================= WYBIEGANIE =================
     if (typN === 'wybieganie') {
-      const tempo = document.querySelector(`[name="tempo-${etap.id_etapudw}"]`)?.value.trim() || '';
-      const dystans = document.querySelector(`[name="dystans-${etap.id_etapudw}"]`)?.value.trim() || '';
-      const tetno = document.querySelector(`[name="tetno-${etap.id_etapudw}"]`)?.value.trim() || '';
+      const tempo = document
+        .querySelector(`[name="tempo-${etap.id_etapudw}"]`)
+        ?.value.trim() || '';
+
+      const dystans = document
+        .querySelector(`[name="dystans-${etap.id_etapudw}"]`)
+        ?.value.trim() || '';
+
+      const tetno = document
+        .querySelector(`[name="tetno-${etap.id_etapudw}"]`)
+        ?.value.trim() || '';
+
+      if (!tempo || !dystans || !tetno) {
+        errors.push(
+          `Etap ${etap.kolejnosc_etapu} (Wybieganie): wszystkie pola muszą być uzupełnione`
+        );
+        continue;
+      }
 
       if (!validateTime(tempo)) {
         errors.push(`Etap ${etap.kolejnosc_etapu}: tempo musi być w formacie mm:ss`);
@@ -301,7 +318,10 @@ async function validateAllInputs() {
       if (!validateInt(tetno)) {
         errors.push(`Etap ${etap.kolejnosc_etapu}: tętno musi być liczbą całkowitą`);
       }
-    } else if (typN === 'tempo') {
+    }
+
+    // ================= TEMPO =================
+    else if (typN === 'tempo') {
       const { data: planTempo, error: errP } = await supabase
         .from('vw_etap_tempo_plan')
         .select('ilosc_powtorzen')
@@ -309,37 +329,88 @@ async function validateAllInputs() {
         .single();
 
       if (errP || !planTempo) {
-        errors.push(`Etap ${etap.kolejnosc_etapu}: błąd odczytu planu tempo.`);
+        errors.push(`Etap ${etap.kolejnosc_etapu}: błąd odczytu planu TEMPO.`);
         continue;
       }
 
-      const ilosc = planTempo.ilosc_powtorzen || 1;
+      const planIlosc = planTempo.ilosc_powtorzen;
+      let filled = 0;
 
-      for (let i = 1; i <= ilosc; i++) {
+      for (let i = 1; i <= planIlosc; i++) {
         const czas = document
           .querySelector(`[name="czas-${etap.id_etapudw}-${i}"]`)
           ?.value.trim() || '';
+
         const przerwa = document
           .querySelector(`[name="przerwa-${etap.id_etapudw}-${i}"]`)
           ?.value.trim() || '';
 
-        if (!validateTime(czas)) {
-          errors.push(`Etap ${etap.kolejnosc_etapu}: czas powtórzenia ${i} musi być w formacie mm:ss`);
+        const dystans = document
+          .querySelector(`[name="dystans-${etap.id_etapudw}-${i}"]`)
+          ?.value.trim() || '';
+
+        const dystansPrzerwy = document
+          .querySelector(`[name="dystansprzerwy-${etap.id_etapudw}-${i}"]`)
+          ?.value.trim() || '';
+
+        // ❌ rozpoczęte, ale niekompletne powtórzenie
+        if (
+          (czas || przerwa || dystans || dystansPrzerwy) &&
+          (!czas || !przerwa || !dystans || !dystansPrzerwy)
+        ) {
+          errors.push(
+            `Etap ${etap.kolejnosc_etapu} (Tempo): powtórzenie ${i} jest niekompletne`
+          );
+          continue;
         }
-        if (!validateTime(przerwa)) {
-          errors.push(`Etap ${etap.kolejnosc_etapu}: czas przerwy ${i} musi być w formacie mm:ss`);
+
+        // ✅ kompletne powtórzenie
+        if (czas && przerwa && dystans && dystansPrzerwy) {
+          filled++;
+
+          if (!validateTime(czas)) {
+            errors.push(
+              `Etap ${etap.kolejnosc_etapu}: czas powtórzenia ${i} musi być w formacie mm:ss`
+            );
+          }
+          if (!validateTime(przerwa)) {
+            errors.push(
+              `Etap ${etap.kolejnosc_etapu}: czas przerwy ${i} musi być w formacie mm:ss`
+            );
+          }
+          if (!validateFloat(dystans)) {
+            errors.push(
+              `Etap ${etap.kolejnosc_etapu}: dystans ${i} musi być liczbą`
+            );
+          }
+          if (!validateFloat(dystansPrzerwy)) {
+            errors.push(
+              `Etap ${etap.kolejnosc_etapu}: dystans przerwy ${i} musi być liczbą`
+            );
+          }
         }
+      }
+
+      // ❌ nie wszystkie powtórzenia uzupełnione
+      if (filled !== planIlosc) {
+        errors.push(
+          `Etap ${etap.kolejnosc_etapu} (Tempo): uzupełniono ${filled} / ${planIlosc} powtórzeń`
+        );
       }
     }
   }
 
   if (errors.length > 0) {
-    alert("Nie zapisano treningu. Popraw następujące błędy:\n\n" + errors.join("\n"));
+    alert(
+      "Nie zapisano treningu. Popraw następujące błędy:\n\n" +
+      errors.join("\n")
+    );
     return false;
   }
 
   return true;
 }
+
 
 /* ===================== ZAPIS WYKONANIA TRENINGU ===================== */
 
@@ -350,10 +421,9 @@ async function submitTrening() {
     return;
   }
 
-  // 1) Walidacja CAŁEGO formularza PRZED pierwszym INSERT-em
-  const ok = await validateAllInputs();
+  const ok = await validateAllInputs(errors);
   if (!ok) {
-    return; // NIC nie zapisujemy
+    return; //brak zapisu
   }
 
   // 2) Dopiero teraz – odczyt zawodnika i zapisy
@@ -530,4 +600,5 @@ async function submitTrening() {
 
 </body>
 </html>
+
 
