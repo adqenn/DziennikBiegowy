@@ -157,9 +157,7 @@ async function loadTrainingsForAthlete(zawodnikId) {
 
   const { data: done, error: errDone } = await supabase
     .from('treningwykonany')
-    .select('id_treningwykonany, id_treningudw, data_treninguw, id_zawodnika') 
-    
-
+    .select('id_treningwykonany, id_treningudw, data_treninguw, id_zawodnika, uwagi') 
     .eq('id_zawodnika', zawodnikId)
     .order('data_treninguw', { ascending: false });
 
@@ -215,6 +213,14 @@ async function buildTrainingCard(treningW) {
     uw.innerHTML = `<strong>Uwagi trenera:</strong> ${plan.uwagi_treningudw}`;
     card.appendChild(uw);
   }
+  
+  if (treningW.uwagi) {
+  const uwZaw = document.createElement('p');
+  uwZaw.className = 'training-meta';
+  uwZaw.innerHTML = `<strong>Komentarz zawodnika:</strong> ${treningW.uwagi}`;
+  card.appendChild(uwZaw);
+}
+
 
   const compare = document.createElement('div');
   compare.className = 'training-compare';
@@ -354,6 +360,7 @@ async function buildTrainingCard(treningW) {
 
 </body>
 </html>
+
 
 
 
