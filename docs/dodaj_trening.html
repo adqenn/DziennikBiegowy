@@ -421,7 +421,7 @@ async function submitTrening() {
     return;
   }
 
-  const ok = await validateAllInputs(errors);
+  const ok = await validateAllInputs();
   if (!ok) {
     return; //brak zapisu
   }
@@ -600,5 +600,6 @@ async function submitTrening() {
 
 </body>
 </html>
+
 
 
