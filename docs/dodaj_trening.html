@@ -217,7 +217,7 @@ if (nazwa === 'tempo') {
       </div>
       <div>
         <label>Czas przerwy ${i} (mm:ss):</label>
-        <input type="text" name="przerwa-${etap.id_etapudw}-${i}" placeholder="np. 1:00" required />
+        <input type="text" name="czasprzerwy-${etap.id_etapudw}-${i}" placeholder="np. 1:00" required />
       </div>
     `;
     div.appendChild(powt);
@@ -336,70 +336,48 @@ async function validateAllInputs() {
       const planIlosc = planTempo.ilosc_powtorzen;
       let filled = 0;
 
-      for (let i = 1; i <= planIlosc; i++) {
-        const czas = document
-          .querySelector(`[name="czas-${etap.id_etapudw}-${i}"]`)
-          ?.value.trim() || '';
+for (let i = 1; i <= planIlosc; i++) {
+  const czas = document
+    .querySelector(`[name="czas-${etap.id_etapudw}-${i}"]`)
+    ?.value.trim() || '';
 
-        const przerwa = document
-          .querySelector(`[name="czasprzerwy-${etap.id_etapudw}-${i}"]`)
-          ?.value.trim() || '';
+  const przerwa = document
+    .querySelector(`[name="czasprzerwy-${etap.id_etapudw}-${i}"]`)
+    ?.value.trim() || '';
 
-        const dystans = document
-          .querySelector(`[name="dystans-${etap.id_etapudw}-${i}"]`)
-          ?.value.trim() || '';
-
-        const dystansPrzerwy = document
-          .querySelector(`[name="dystansprzerwy-${etap.id_etapudw}-${i}"]`)
-          ?.value.trim() || '';
-
-        // ❌ rozpoczęte, ale niekompletne powtórzenie
-        if (
-          (czas || przerwa || dystans || dystansPrzerwy) &&
-          (!czas || !przerwa || !dystans || !dystansPrzerwy)
-        ) {
-          errors.push(
-            `Etap ${etap.kolejnosc_etapu} (Tempo): powtórzenie ${i} jest niekompletne`
-          );
-          continue;
-        }
-
-        // ✅ kompletne powtórzenie
-        if (czas && przerwa && dystans && dystansPrzerwy) {
-          filled++;
-
-          if (!validateTime(czas)) {
-            errors.push(
-              `Etap ${etap.kolejnosc_etapu}: czas powtórzenia ${i} musi być w formacie mm:ss`
-            );
-          }
-          if (!validateTime(przerwa)) {
-            errors.push(
-              `Etap ${etap.kolejnosc_etapu}: czas przerwy ${i} musi być w formacie mm:ss`
-            );
-          }
-          if (!validateFloat(dystans)) {
-            errors.push(
-              `Etap ${etap.kolejnosc_etapu}: dystans ${i} musi być liczbą`
-            );
-          }
-          if (!validateFloat(dystansPrzerwy)) {
-            errors.push(
-              `Etap ${etap.kolejnosc_etapu}: dystans przerwy ${i} musi być liczbą`
-            );
-          }
-        }
-      }
-
-      // ❌ nie wszystkie powtórzenia uzupełnione
-      if (filled !== planIlosc) {
-        errors.push(
-          `Etap ${etap.kolejnosc_etapu} (Tempo): uzupełniono ${filled} / ${planIlosc} powtórzeń`
-        );
-      }
-    }
+  // ❌ rozpoczęte, ale niekompletne powtórzenie
+  if ((czas || przerwa) && (!czas || !przerwa)) {
+    errors.push(
+      `Etap ${etap.kolejnosc_etapu} (Tempo): powtórzenie ${i} jest niekompletne`
+    );
+    continue;
   }
 
+  // ✅ kompletne powtórzenie
+  if (czas && przerwa) {
+    filled++;
+
+    if (!validateTime(czas)) {
+      errors.push(
+        `Etap ${etap.kolejnosc_etapu}: czas powtórzenia ${i} musi być w formacie mm:ss`
+      );
+    }
+    if (!validateTime(przerwa)) {
+      errors.push(
+        `Etap ${etap.kolejnosc_etapu}: czas przerwy ${i} musi być w formacie mm:ss`
+      );
+    }
+  }
+}
+
+// ✅ TO MUSI BYĆ POZA PĘTLĄ
+    if (filled !== planIlosc) {
+      errors.push(
+        `Etap ${etap.kolejnosc_etapu} (Tempo): uzupełniono ${filled} / ${planIlosc} powtórzeń`
+      );
+    }
+  } // koniec for (etap)
+  
   if (errors.length > 0) {
     alert(
       "Nie zapisano treningu. Popraw następujące błędy:\n\n" +
@@ -410,6 +388,8 @@ async function validateAllInputs() {
 
   return true;
 }
+
+
 
 
 /* ===================== ZAPIS WYKONANIA TRENINGU ===================== */
@@ -601,6 +581,7 @@ const przerwa = document
 
 </body>
 </html>
+
 
 
 
