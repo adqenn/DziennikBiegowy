@@ -99,16 +99,7 @@ function renderListaTreningow(treningi) {
   const div = document.getElementById('lista-treningow');
   div.innerHTML = '';
 
-  const dzis = new Date();
-  dzis.setHours(0, 0, 0, 0);
-
-  const przyszle = treningi.filter(t => {
-    const d = new Date(t.data_treningudw);
-    d.setHours(0, 0, 0, 0);
-    return d >= dzis;
-  });
-
-  const posortowane = przyszle.sort(
+  const posortowane = treningi.sort(
     (a, b) => new Date(a.data_treningudw) - new Date(b.data_treningudw)
   );
 
@@ -129,6 +120,7 @@ function renderListaTreningow(treningi) {
     });
   });
 }
+
 
 /* ===================== WYBÓR TRENINGU ===================== */
 
@@ -582,6 +574,7 @@ const przerwa = document
 
 </body>
 </html>
+
 
 
 
