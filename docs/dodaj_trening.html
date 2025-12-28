@@ -100,7 +100,7 @@ function renderListaTreningow(treningi) {
   div.innerHTML = '';
 
   const posortowane = treningi.sort(
-    (a, b) => new Date(a.data_treningudw) - new Date(b.data_treningudw)
+    (a, b) => new Date(b.data_treningudw) - new Date(a.data_treningudw)
   );
 
   const ograniczone = posortowane.slice(0, 3);
@@ -120,6 +120,8 @@ function renderListaTreningow(treningi) {
     });
   });
 }
+
+
 
 
 /* ===================== WYBÓR TRENINGU ===================== */
@@ -574,6 +576,7 @@ const przerwa = document
 
 </body>
 </html>
+
 
 
 
